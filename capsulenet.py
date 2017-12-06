@@ -43,7 +43,7 @@ def CapsNet(input_shape, n_class, routings):
     conv1 = layers.Conv2D(filters=256, kernel_size=9, strides=1, padding='valid', activation='relu', name='conv1')(x)
 
     # Layer 2: Conv2D layer with `squash` activation, then reshape to [None, num_capsule, dim_capsule]
-    primarycaps = PrimaryCap(conv1, dim_capsule=8, n_channels=32, kernel_size=9, strides=2, padding='valid')
+    primarycaps = PrimaryCap(conv1, dim_capsule=8*2, n_channels=32, kernel_size=9, strides=2, padding='valid')
 
     # Layer 3: Capsule layer. Routing algorithm works here.
     digitcaps = CapsuleLayer(num_capsule=n_class, dim_capsule=16, routings=routings,
@@ -54,20 +54,24 @@ def CapsNet(input_shape, n_class, routings):
     out_caps = Length(name='capsnet')(digitcaps)
 
     # Decoder network.
-    y = layers.Input(shape=(n_class,))
-    masked_by_y = Mask()([digitcaps, y])  # The true label is used to mask the output of capsule layer. For training
+    y1 = layers.Input(shape=(n_class,))
+    y2 = layers.Input(shape=(n_class,))
+    masked_by_y1 = Mask()([digitcaps, y1])  # The true label is used to mask the output of capsule layer. For training
+    masked_by_y2 = Mask()([digitcaps, y2])  # The true label is used to mask the output of capsule layer. For training
     masked = Mask()(digitcaps)  # Mask using the capsule with maximal length. For prediction
+    masked2 = Mask(2)(digitcaps)  # Mask using the capsule with maximal length. For prediction
 
     # Shared Decoder model in training and prediction
+    mnist_shape = (28, 28, 1)
     decoder = models.Sequential(name='decoder')
-    decoder.add(layers.Dense(512, activation='relu', input_dim=16*n_class))
+    decoder.add(layers.Dense(512, activation='relu', input_dim=2*16*n_class))
     decoder.add(layers.Dense(1024, activation='relu'))
-    decoder.add(layers.Dense(np.prod(input_shape), activation='sigmoid'))
-    decoder.add(layers.Reshape(target_shape=input_shape, name='out_recon'))
+    decoder.add(layers.Dense(np.prod(mnist_shape), activation='sigmoid'))
+    decoder.add(layers.Reshape(target_shape=mnist_shape, name='out_recon'))
 
     # Models for training and evaluation (prediction)
-    train_model = models.Model([x, y], [out_caps, decoder(masked_by_y)])
-    eval_model = models.Model(x, [out_caps, decoder(masked)])
+    train_model = models.Model([x, y1, y2], [out_caps, decoder(masked_by_y1), decoder(masked_by_y2)])
+    eval_model = models.Model(x, [out_caps, decoder(masked), decoder(masked2)])
 
     # manipulate model
     noise = layers.Input(shape=(n_class, 16))
@@ -89,6 +93,37 @@ def margin_loss(y_true, y_pred):
 
     return K.mean(K.sum(L, 1))
 
+from buffering import buffered_gen_threaded as buf
+
+
+def loader_train(data, batch_size):
+    x_test, y_test = data
+    # print(x_test.shape)
+    # x_test = np.array_split(x_test, 10000//batch_size)
+    # y_test = np.array_split(y_test, 10000//batch_size)
+    # while x_test:
+    #     x = x_test.pop()
+    #     yield x, [y_test.pop(), x]
+    while True:
+        b_x = []
+        b_x1 = []
+        b_x2 = []
+        b_y = []
+        b_y1 = []
+        b_y2 = []
+        for i in range(batch_size):
+            x1, x2, x, y1, y2, y = sample_and_combine(x_test, y_test)
+            b_x1.append(x1)
+            b_x2.append(x2)
+            b_x.append(x)
+            b_y.append(y)
+            b_y1.append(y1)
+            b_y2.append(y2)
+
+        yield [np.stack(b_x), np.stack(b_y1), np.stack(b_y2)], [np.stack(b_y), np.stack(b_x1), np.stack(b_x2)]
+
+
+from threading import Thread
 
 def train(model, data, args):
     """
@@ -105,15 +140,15 @@ def train(model, data, args):
     log = callbacks.CSVLogger(args.save_dir + '/log.csv')
     tb = callbacks.TensorBoard(log_dir=args.save_dir + '/tensorboard-logs',
                                batch_size=args.batch_size, histogram_freq=int(args.debug))
-    checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/weights-{epoch:02d}.h5', monitor='val_capsnet_acc',
+    checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/weights-{epoch:02d}.h5', monitor='capsnet_k_categorical_accuracy',
                                            save_best_only=True, save_weights_only=True, verbose=1)
     lr_decay = callbacks.LearningRateScheduler(schedule=lambda epoch: args.lr * (args.lr_decay ** epoch))
 
     # compile the model
     model.compile(optimizer=optimizers.Adam(lr=args.lr),
-                  loss=[margin_loss, 'mse'],
-                  loss_weights=[1., args.lam_recon],
-                  metrics={'capsnet': 'accuracy'})
+                  loss=[margin_loss, 'mse', 'mse'],
+                  loss_weights=[1., args.lam_recon, args.lam_recon],
+                  metrics={'capsnet': k_categorical_accuracy})
 
     """
     # Training without data augmentation:
@@ -131,10 +166,10 @@ def train(model, data, args):
             yield ([x_batch, y_batch], [y_batch, x_batch])
 
     # Training with data augmentation. If shift_fraction=0., also no augmentation.
-    model.fit_generator(generator=train_generator(x_train, y_train, args.batch_size, args.shift_fraction),
+    model.fit_generator(generator=buf(loader_train((x_train, y_train), args.batch_size), 3),
                         steps_per_epoch=int(y_train.shape[0] / args.batch_size),
-                        epochs=args.epochs,
-                        validation_data=[[x_test, y_test], [y_test, x_test]],
+                        epochs=args.epochs,initial_epoch=50,
+                        #validation_data=[[x_test, y_test], [y_test, x_test]],
                         callbacks=[log, tb, checkpoint, lr_decay])
     # End: Training with data augmentation -----------------------------------------------------------------------#
 
@@ -186,12 +221,69 @@ def manipulate_latent(model, data, args):
     Image.fromarray(image.astype(np.uint8)).save(args.save_dir + '/manipulate-%d.png' % args.digit)
     print('manipulated result saved to %s/manipulate-%d.png' % (args.save_dir, args.digit))
     print('-' * 30 + 'End: manipulate' + '-' * 30)
+from combine_mnist import sample_and_combine
+import matplotlib.pyplot as plt
+
+
+def loader(data, batch_size):
+    while True:
+        b_x = []
+        b_x1 = []
+        b_x2 = []
+        b_y = []
+        b_y1 = []
+        b_y2 = []
+        for i in range(batch_size):
+            x1, x2, x, y1, y2, y = sample_and_combine(x_test, y_test)
+            b_x1.append(x1)
+            b_x2.append(x2)
+            b_x.append(x)
+            b_y.append(y)
+            b_y1.append(y1)
+            b_y2.append(y2)
+
+        yield [np.stack(b_x)], [np.stack(b_y), np.stack(b_x1), np.stack(b_x2)]
+
+
+import tensorflow as tf
+
+def k_categorical_accuracy(y_true, y_pred, k=2):
+    # Get top k classes
+    y_true = tf.nn.top_k(y_true, k, sorted=False).indices
+    y_pred = tf.nn.top_k(y_pred, k, sorted=False).indices
+    # Sort
+    y_true = tf.nn.top_k(y_true, k).values
+    y_pred = tf.nn.top_k(y_pred, k).values
+    return K.all(K.cast(K.equal(y_true, y_pred), K.floatx()), -1)
+
+
+def test_multi(model, data):
+    x_test, y_test = data
+    x1, x2, x, y1, y2, y = sample_and_combine(x_test, y_test)
+    y_pred, x_recon1, x_recon2 = model.predict_on_batch(x[np.newaxis])
+    print(y_pred, y, x_recon1.shape)
+    x_recon1 = x_recon1 * 255
+    x_recon2 = x_recon2 * 255
+    fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
+    ax[0][0].imshow(x1.reshape(28, 28)*255., cmap='gray')
+    ax[0][1].imshow(x2.reshape(28, 28) * 255., cmap='gray')
+    ax[0][2].imshow(x.reshape(28+8, 28+8) * 255., cmap='gray')
+    ax[1][0].imshow(x_recon1[0].reshape(28, 28), cmap='gray')
+    ax[1][1].imshow(x_recon2[0].reshape(28, 28), cmap='gray')
+    plt.show()
+    # model.compile(optimizer=optimizers.Adam(lr=args.lr),
+    #                    loss=[margin_loss, 'mse', 'mse'],
+    #                    loss_weights=[1., args.lam_recon, args.lam_recon],
+    #                    metrics={'capsnet': k_categorical_accuracy})
+    # e = model.evaluate_generator(loader(data, 10), steps=500)
+    # print(e)
+
 
 
 def load_mnist():
     # the data, shuffled and split between train and test sets
-    from keras.datasets import mnist
-    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+    from keras.datasets import fashion_mnist
+    (x_train, y_train), (x_test, y_test) = fashion_mnist.load_data()
 
     x_train = x_train.reshape(-1, 28, 28, 1).astype('float32') / 255.
     x_test = x_test.reshape(-1, 28, 28, 1).astype('float32') / 255.
@@ -253,4 +345,4 @@ if __name__ == "__main__":
         if args.weights is None:
             print('No weights are provided. Will test using random initialized weights.')
         manipulate_latent(manipulate_model, (x_test, y_test), args)
-        test(model=eval_model, data=(x_test, y_test), args=args)
+        test_multi(model=eval_model, data=(x_test, y_test))

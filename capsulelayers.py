@@ -40,16 +40,24 @@ class Mask(layers.Layer):
         out2 = Mask()([x, y])  # out2.shape=[8,6]. Masked with true labels y. Of course y can also be manipulated.
         ```
     """
+    def __init__(self, k=1, **kwargs):
+        super(Mask, self).__init__(**kwargs)
+        self._k = k
+
     def call(self, inputs, **kwargs):
         if type(inputs) is list:  # true label is provided with shape = [None, n_classes], i.e. one-hot code.
             assert len(inputs) == 2
             inputs, mask = inputs
         else:  # if no true label, mask by the max length of capsules. Mainly used for prediction
-            # compute lengths of capsules
-            x = K.sqrt(K.sum(K.square(inputs), -1))
-            # generate the mask which is a one-hot code.
-            # mask.shape=[None, n_classes]=[None, num_capsule]
-            mask = K.one_hot(indices=K.argmax(x, 1), num_classes=x.get_shape().as_list()[1])
+            masked_inputs = inputs
+            for i in range(self._k):
+                # compute lengths of capsules
+                x = K.sqrt(K.sum(K.square(masked_inputs), -1))
+                # generate the mask which is a one-hot code.
+                # mask.shape=[None, n_classes]=[None, num_capsule]
+                mask = K.one_hot(indices=K.argmax(x, 1), num_classes=x.get_shape().as_list()[1])
+                rev_mask = K.ones_like(mask) - mask
+                masked_inputs = masked_inputs * K.expand_dims(rev_mask, -1)
 
         # inputs.shape=[None, num_capsule, dim_capsule]
         # mask.shape=[None, num_capsule]
