@@ -37,7 +37,7 @@ def CapsNet(input_shape, n_class, routings):
     :return: Two Keras Models, the first one used for training, and the second one for evaluation.
             `eval_model` can also be used for training.
     """
-    x = layers.Input(shape=input_shape)
+    x = layers.Input(shape=(48, 48, 1))
 
     # Layer 1: Just a conventional Conv2D layer
     conv1 = layers.Conv2D(filters=256, kernel_size=9, strides=1, padding='valid', activation='relu', name='conv1')(x)
@@ -46,7 +46,7 @@ def CapsNet(input_shape, n_class, routings):
     primarycaps = PrimaryCap(conv1, dim_capsule=8*2, n_channels=32, kernel_size=9, strides=2, padding='valid')
 
     # Layer 3: Capsule layer. Routing algorithm works here.
-    digitcaps = CapsuleLayer(num_capsule=n_class, dim_capsule=16, routings=routings,
+    digitcaps = CapsuleLayer(num_capsule=n_class, dim_capsule=2*16, routings=routings,
                              name='digitcaps')(primarycaps)
 
     # Layer 4: This is an auxiliary layer to replace each capsule with its length. Just to match the true label's shape.
@@ -74,7 +74,7 @@ def CapsNet(input_shape, n_class, routings):
     eval_model = models.Model(x, [out_caps, decoder(masked), decoder(masked2)])
 
     # manipulate model
-    noise = layers.Input(shape=(n_class, 16))
+    noise = layers.Input(shape=(n_class, 2*16))
     noised_digitcaps = layers.Add()([digitcaps, noise])
     masked_noised_y = Mask()([noised_digitcaps, y1])
     manipulate_model = models.Model([x, y1, noise], decoder(masked_noised_y))
@@ -168,7 +168,7 @@ def train(model, data, args):
     # Training with data augmentation. If shift_fraction=0., also no augmentation.
     model.fit_generator(generator=buf(loader_train((x_train, y_train), args.batch_size), 3),
                         steps_per_epoch=int(y_train.shape[0] / args.batch_size),
-                        epochs=args.epochs,initial_epoch=50,
+                        epochs=args.epochs,
                         #validation_data=[[x_test, y_test], [y_test, x_test]],
                         callbacks=[log, tb, checkpoint, lr_decay])
     # End: Training with data augmentation -----------------------------------------------------------------------#
@@ -267,7 +267,7 @@ def test_multi(model, data):
     fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
     ax[0][0].imshow(x1.reshape(28, 28)*255., cmap='gray')
     ax[0][1].imshow(x2.reshape(28, 28) * 255., cmap='gray')
-    ax[0][2].imshow(x.reshape(28+8, 28+8) * 255., cmap='gray')
+    ax[0][2].imshow(x.reshape(28+20, 28+20) * 255., cmap='gray')
     ax[1][0].imshow(x_recon1[0].reshape(28, 28), cmap='gray')
     ax[1][1].imshow(x_recon2[0].reshape(28, 28), cmap='gray')
     plt.show()
@@ -344,5 +344,5 @@ if __name__ == "__main__":
     else:  # as long as weights are given, will run testing
         if args.weights is None:
             print('No weights are provided. Will test using random initialized weights.')
-        manipulate_latent(manipulate_model, (x_test, y_test), args)
+        #manipulate_latent(manipulate_model, (x_test, y_test), args)
         test_multi(model=eval_model, data=(x_test, y_test))

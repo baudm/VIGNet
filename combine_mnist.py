@@ -2,9 +2,11 @@
 
 import numpy as np
 
-def draw(canvas, image):
-    x_off = np.random.randint(0, 9)
-    y_off = np.random.randint(0, 9)
+def draw(canvas, image, k):
+    #x_off = np.random.randint(0, 9)
+    #y_off = np.random.randint(0, 9)
+    x_off = 0 if k == 1 else 48-28
+    y_off = 0 if k == 1 else 48-28
     #image = image[3:-3, 3:-3]
     w, h, d = image.shape
     # print(image.shape)
@@ -25,12 +27,12 @@ def sample_and_combine(x_pool, y_pool):
     y1 = y_pool[first]
     x2 = x_pool[second]
     y2 = y_pool[second]
-    combined = np.zeros((36, 36))
-    draw(combined, x1)
-    draw(combined, x2)
+    combined = np.zeros((48, 48), dtype=x1.dtype)
+    draw(combined, x1, 1)
+    draw(combined, x2, 2)
     y = y1.copy()
     y[np.argmax(y2)] = 1
-    return x1, x2, combined.reshape(36, 28+8, 1), y1, y2, y
+    return x1, x2, combined.reshape(48, 48, 1), y1, y2, y
 
 
 def main():
