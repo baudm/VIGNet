@@ -39,7 +39,7 @@ def CapsNet(input_shape, n_class, routings):
     :return: Two Keras Models, the first one used for training, and the second one for evaluation.
             `eval_model` can also be used for training.
     """
-    x = layers.Input(shape=(48, 48, 1))
+    x = layers.Input(shape=input_shape)
 
     # Layer 1: Just a conventional Conv2D layer
     conv1 = layers.Conv2D(filters=256, kernel_size=9, strides=1, padding='valid', activation='relu', name='conv1')(x)
@@ -48,7 +48,7 @@ def CapsNet(input_shape, n_class, routings):
     primarycaps = PrimaryCap(conv1, dim_capsule=8, n_channels=32, kernel_size=9, strides=2, padding='valid')
 
     # Layer 3: Capsule layer. Routing algorithm works here.
-    digitcaps = CapsuleLayer(num_capsule=n_class, dim_capsule=2*16, routings=routings,
+    digitcaps = CapsuleLayer(num_capsule=n_class, dim_capsule=16, routings=routings,
                              name='digitcaps')(primarycaps)
 
     # Layer 4: This is an auxiliary layer to replace each capsule with its length. Just to match the true label's shape.
@@ -76,7 +76,7 @@ def CapsNet(input_shape, n_class, routings):
     eval_model = models.Model(x, [out_caps, decoder(masked1), decoder(masked2)])
 
     # manipulate model
-    noise = layers.Input(shape=(n_class, 2*16))
+    noise = layers.Input(shape=(n_class, 16))
     noised_digitcaps = layers.Add()([digitcaps, noise])
     masked_noised_y = Mask()([noised_digitcaps, y1])
     manipulate_model = models.Model([x, y1, noise], decoder(masked_noised_y))
@@ -122,7 +122,7 @@ def train(model, data, args):
     log = callbacks.CSVLogger(args.save_dir + '/log.csv')
     tb = callbacks.TensorBoard(log_dir=args.save_dir + '/tensorboard-logs',
                                batch_size=args.batch_size, histogram_freq=int(args.debug))
-    checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/weights-{epoch:02d}.h5', monitor='capsnet_k_categorical_accuracy',
+    checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/weights-{epoch:02d}.h5', monitor='val_capsnet_k_categorical_accuracy',
                                            save_best_only=True, save_weights_only=True, verbose=1)
     lr_decay = callbacks.LearningRateScheduler(schedule=lambda epoch: args.lr * (args.lr_decay ** epoch))
 
@@ -137,7 +137,7 @@ def train(model, data, args):
                         steps_per_epoch=int(y_train.shape[0] / args.batch_size),
                         epochs=args.epochs,
                         validation_data=buf(data_generator(x_test, y_test, args.batch_size), 3),
-                        validation_steps=1000,
+                        validation_steps=50,
                         callbacks=[log, tb, checkpoint, lr_decay])
     # End: Training with data augmentation -----------------------------------------------------------------------#
 
