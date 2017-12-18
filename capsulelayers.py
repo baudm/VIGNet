@@ -42,7 +42,7 @@ class Mask(layers.Layer):
     """
     def __init__(self, k=1, **kwargs):
         super(Mask, self).__init__(**kwargs)
-        self._k = k
+        self.k = k
 
     def call(self, inputs, **kwargs):
         if type(inputs) is list:  # true label is provided with shape = [None, n_classes], i.e. one-hot code.
@@ -50,14 +50,14 @@ class Mask(layers.Layer):
             inputs, mask = inputs
         else:  # if no true label, mask by the max length of capsules. Mainly used for prediction
             masked_inputs = inputs
-            for i in range(self._k):
+            for i in range(self.k):
                 # compute lengths of capsules
                 x = K.sqrt(K.sum(K.square(masked_inputs), -1))
                 # generate the mask which is a one-hot code.
                 # mask.shape=[None, n_classes]=[None, num_capsule]
                 mask = K.one_hot(indices=K.argmax(x, 1), num_classes=x.get_shape().as_list()[1])
-                rev_mask = K.ones_like(mask) - mask
-                masked_inputs = masked_inputs * K.expand_dims(rev_mask, -1)
+                mask_complement = K.ones_like(mask) - mask
+                masked_inputs = masked_inputs * K.expand_dims(mask_complement, -1)
 
         # inputs.shape=[None, num_capsule, dim_capsule]
         # mask.shape=[None, num_capsule]
@@ -70,6 +70,13 @@ class Mask(layers.Layer):
             return tuple([None, input_shape[0][1] * input_shape[0][2]])
         else:  # no true label provided
             return tuple([None, input_shape[1] * input_shape[2]])
+
+    def get_config(self):
+        config = {
+            'k': self.k
+        }
+        base_config = super(Mask, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
 
 
 def squash(vectors, axis=-1):
