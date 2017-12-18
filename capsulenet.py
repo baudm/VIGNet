@@ -23,7 +23,9 @@ from keras.utils import to_categorical
 import matplotlib.pyplot as plt
 from utils import combine_images
 from PIL import Image
-from capsulelayers import CapsuleLayer, PrimaryCap, Length, Mask
+from capsulelayers import CapsuleLayer, PrimaryCap, Length, Mask, k_categorical_accuracy
+from combine_mnist import sample_and_combine
+from buffering import buffered_gen_threaded as buf
 
 K.set_image_data_format('channels_last')
 
@@ -43,7 +45,7 @@ def CapsNet(input_shape, n_class, routings):
     conv1 = layers.Conv2D(filters=256, kernel_size=9, strides=1, padding='valid', activation='relu', name='conv1')(x)
 
     # Layer 2: Conv2D layer with `squash` activation, then reshape to [None, num_capsule, dim_capsule]
-    primarycaps = PrimaryCap(conv1, dim_capsule=8*2, n_channels=32, kernel_size=9, strides=2, padding='valid')
+    primarycaps = PrimaryCap(conv1, dim_capsule=8, n_channels=32, kernel_size=9, strides=2, padding='valid')
 
     # Layer 3: Capsule layer. Routing algorithm works here.
     digitcaps = CapsuleLayer(num_capsule=n_class, dim_capsule=2*16, routings=routings,
@@ -58,20 +60,20 @@ def CapsNet(input_shape, n_class, routings):
     y2 = layers.Input(shape=(n_class,))
     masked_by_y1 = Mask()([digitcaps, y1])  # The true label is used to mask the output of capsule layer. For training
     masked_by_y2 = Mask()([digitcaps, y2])  # The true label is used to mask the output of capsule layer. For training
-    masked = Mask()(digitcaps)  # Mask using the capsule with maximal length. For prediction
+    masked1 = Mask(1)(digitcaps)  # Mask using the capsule with maximal length. For prediction
     masked2 = Mask(2)(digitcaps)  # Mask using the capsule with maximal length. For prediction
 
     # Shared Decoder model in training and prediction
     mnist_shape = (28, 28, 1)
     decoder = models.Sequential(name='decoder')
-    decoder.add(layers.Dense(512, activation='relu', input_dim=2*16*n_class))
+    decoder.add(layers.Dense(512, activation='relu', input_dim=16*n_class))
     decoder.add(layers.Dense(1024, activation='relu'))
     decoder.add(layers.Dense(np.prod(mnist_shape), activation='sigmoid'))
     decoder.add(layers.Reshape(target_shape=mnist_shape, name='out_recon'))
 
     # Models for training and evaluation (prediction)
     train_model = models.Model([x, y1, y2], [out_caps, decoder(masked_by_y1), decoder(masked_by_y2)])
-    eval_model = models.Model(x, [out_caps, decoder(masked), decoder(masked2)])
+    eval_model = models.Model(x, [out_caps, decoder(masked1), decoder(masked2)])
 
     # manipulate model
     noise = layers.Input(shape=(n_class, 2*16))
@@ -93,37 +95,17 @@ def margin_loss(y_true, y_pred):
 
     return K.mean(K.sum(L, 1))
 
-from buffering import buffered_gen_threaded as buf
 
-
-def loader_train(data, batch_size):
-    x_test, y_test = data
-    # print(x_test.shape)
-    # x_test = np.array_split(x_test, 10000//batch_size)
-    # y_test = np.array_split(y_test, 10000//batch_size)
-    # while x_test:
-    #     x = x_test.pop()
-    #     yield x, [y_test.pop(), x]
+def data_generator(x_data, y_data, batch_size):
     while True:
-        b_x = []
-        b_x1 = []
-        b_x2 = []
-        b_y = []
-        b_y1 = []
-        b_y2 = []
-        for i in range(batch_size):
-            x1, x2, x, y1, y2, y = sample_and_combine(x_test, y_test)
-            b_x1.append(x1)
-            b_x2.append(x2)
-            b_x.append(x)
-            b_y.append(y)
-            b_y1.append(y1)
-            b_y2.append(y2)
+        data = [sample_and_combine(x_data, y_data) for i in range(batch_size)]
+        # Group
+        data = zip(*data)
+        # Stack
+        data = list(map(np.stack, data))
+        x1, x2, x, y1, y2, y = data
+        yield [x, y1, y2], [y, x1, x2]
 
-        yield [np.stack(b_x), np.stack(b_y1), np.stack(b_y2)], [np.stack(b_y), np.stack(b_x1), np.stack(b_x2)]
-
-
-from threading import Thread
 
 def train(model, data, args):
     """
@@ -150,26 +132,12 @@ def train(model, data, args):
                   loss_weights=[1., args.lam_recon, args.lam_recon],
                   metrics={'capsnet': k_categorical_accuracy})
 
-    """
-    # Training without data augmentation:
-    model.fit([x_train, y_train], [y_train, x_train], batch_size=args.batch_size, epochs=args.epochs,
-              validation_data=[[x_test, y_test], [y_test, x_test]], callbacks=[log, tb, checkpoint, lr_decay])
-    """
-
-    # Begin: Training with data augmentation ---------------------------------------------------------------------#
-    def train_generator(x, y, batch_size, shift_fraction=0.):
-        train_datagen = ImageDataGenerator(width_shift_range=shift_fraction,
-                                           height_shift_range=shift_fraction)  # shift up to 2 pixel for MNIST
-        generator = train_datagen.flow(x, y, batch_size=batch_size)
-        while 1:
-            x_batch, y_batch = generator.next()
-            yield ([x_batch, y_batch], [y_batch, x_batch])
-
     # Training with data augmentation. If shift_fraction=0., also no augmentation.
-    model.fit_generator(generator=buf(loader_train((x_train, y_train), args.batch_size), 3),
+    model.fit_generator(generator=buf(data_generator(x_train, y_train, args.batch_size), 3),
                         steps_per_epoch=int(y_train.shape[0] / args.batch_size),
                         epochs=args.epochs,
-                        #validation_data=[[x_test, y_test], [y_test, x_test]],
+                        validation_data=buf(data_generator(x_test, y_test, args.batch_size), 3),
+                        validation_steps=1000,
                         callbacks=[log, tb, checkpoint, lr_decay])
     # End: Training with data augmentation -----------------------------------------------------------------------#
 
@@ -198,6 +166,27 @@ def test(model, data, args):
     plt.show()
 
 
+def test_multi(model, data):
+    x_test, y_test = data
+    x1, x2, x, y1, y2, y = sample_and_combine(x_test, y_test)
+    y_pred, x_recon1, x_recon2 = model.predict_on_batch(x[np.newaxis])
+    x_recon1 = x_recon1 * 255
+    x_recon2 = x_recon2 * 255
+    fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
+    ax[0][0].imshow(x1.squeeze( )* 255., cmap='gray')
+    ax[0][1].imshow(x2.squeeze() * 255., cmap='gray')
+    ax[0][2].imshow(x.squeeze() * 255., cmap='gray')
+    ax[1][0].imshow(x_recon1[0].squeeze(), cmap='gray')
+    ax[1][1].imshow(x_recon2[0].squeeze(), cmap='gray')
+    plt.show()
+    # model.compile(optimizer=optimizers.Adam(lr=args.lr),
+    #                    loss=[margin_loss, 'mse', 'mse'],
+    #                    loss_weights=[1., args.lam_recon, args.lam_recon],
+    #                    metrics={'capsnet': k_categorical_accuracy})
+    # e = model.evaluate_generator(loader(data, 10), steps=500)
+    # print(e)
+
+
 def manipulate_latent(model, data, args):
     print('-'*30 + 'Begin: manipulate' + '-'*30)
     x_test, y_test = data
@@ -221,69 +210,12 @@ def manipulate_latent(model, data, args):
     Image.fromarray(image.astype(np.uint8)).save(args.save_dir + '/manipulate-%d.png' % args.digit)
     print('manipulated result saved to %s/manipulate-%d.png' % (args.save_dir, args.digit))
     print('-' * 30 + 'End: manipulate' + '-' * 30)
-from combine_mnist import sample_and_combine
-import matplotlib.pyplot as plt
-
-
-def loader(data, batch_size):
-    while True:
-        b_x = []
-        b_x1 = []
-        b_x2 = []
-        b_y = []
-        b_y1 = []
-        b_y2 = []
-        for i in range(batch_size):
-            x1, x2, x, y1, y2, y = sample_and_combine(x_test, y_test)
-            b_x1.append(x1)
-            b_x2.append(x2)
-            b_x.append(x)
-            b_y.append(y)
-            b_y1.append(y1)
-            b_y2.append(y2)
-
-        yield [np.stack(b_x)], [np.stack(b_y), np.stack(b_x1), np.stack(b_x2)]
-
-
-import tensorflow as tf
-
-def k_categorical_accuracy(y_true, y_pred, k=2):
-    # Get top k classes
-    y_true = tf.nn.top_k(y_true, k, sorted=False).indices
-    y_pred = tf.nn.top_k(y_pred, k, sorted=False).indices
-    # Sort
-    y_true = tf.nn.top_k(y_true, k).values
-    y_pred = tf.nn.top_k(y_pred, k).values
-    return K.all(K.cast(K.equal(y_true, y_pred), K.floatx()), -1)
-
-
-def test_multi(model, data):
-    x_test, y_test = data
-    x1, x2, x, y1, y2, y = sample_and_combine(x_test, y_test)
-    y_pred, x_recon1, x_recon2 = model.predict_on_batch(x[np.newaxis])
-    print(y_pred, y, x_recon1.shape)
-    x_recon1 = x_recon1 * 255
-    x_recon2 = x_recon2 * 255
-    fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
-    ax[0][0].imshow(x1.reshape(28, 28)*255., cmap='gray')
-    ax[0][1].imshow(x2.reshape(28, 28) * 255., cmap='gray')
-    ax[0][2].imshow(x.reshape(28+20, 28+20) * 255., cmap='gray')
-    ax[1][0].imshow(x_recon1[0].reshape(28, 28), cmap='gray')
-    ax[1][1].imshow(x_recon2[0].reshape(28, 28), cmap='gray')
-    plt.show()
-    # model.compile(optimizer=optimizers.Adam(lr=args.lr),
-    #                    loss=[margin_loss, 'mse', 'mse'],
-    #                    loss_weights=[1., args.lam_recon, args.lam_recon],
-    #                    metrics={'capsnet': k_categorical_accuracy})
-    # e = model.evaluate_generator(loader(data, 10), steps=500)
-    # print(e)
-
 
 
 def load_mnist():
     # the data, shuffled and split between train and test sets
-    from keras.datasets import fashion_mnist
-    (x_train, y_train), (x_test, y_test) = fashion_mnist.load_data()
+    from keras.datasets import fashion_mnist as mnist
+    (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
     x_train = x_train.reshape(-1, 28, 28, 1).astype('float32') / 255.
     x_test = x_test.reshape(-1, 28, 28, 1).astype('float32') / 255.
@@ -329,9 +261,10 @@ if __name__ == "__main__":
 
     # load data
     (x_train, y_train), (x_test, y_test) = load_mnist()
+    x_sample = next(data_generator(x_train, y_train, 1))[0][0]
 
     # define model
-    model, eval_model, manipulate_model = CapsNet(input_shape=x_train.shape[1:],
+    model, eval_model, manipulate_model = CapsNet(input_shape=x_sample.shape[1:],
                                                   n_class=len(np.unique(np.argmax(y_train, 1))),
                                                   routings=args.routings)
     model.summary()

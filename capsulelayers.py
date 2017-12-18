@@ -12,6 +12,16 @@ import tensorflow as tf
 from keras import initializers, layers
 
 
+def k_categorical_accuracy(y_true, y_pred, k=2):
+    # Get top k classes
+    y_true = tf.nn.top_k(y_true, k, sorted=False).indices
+    y_pred = tf.nn.top_k(y_pred, k, sorted=False).indices
+    # Sort
+    y_true = tf.nn.top_k(y_true, k).values
+    y_pred = tf.nn.top_k(y_pred, k).values
+    return K.all(K.cast(K.equal(y_true, y_pred), K.floatx()), -1)
+
+
 class Length(layers.Layer):
     """
     Compute the length of vectors. This is used to compute a Tensor that has the same shape with y_true in margin_loss.
