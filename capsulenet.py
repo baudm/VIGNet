@@ -173,7 +173,7 @@ def test_multi(model, data):
     x_recon1 = x_recon1 * 255
     x_recon2 = x_recon2 * 255
     fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
-    ax[0][0].imshow(x1.squeeze( )* 255., cmap='gray')
+    ax[0][0].imshow(x1.squeeze() * 255., cmap='gray')
     ax[0][1].imshow(x2.squeeze() * 255., cmap='gray')
     ax[0][2].imshow(x.squeeze() * 255., cmap='gray')
     ax[1][0].imshow(x_recon1[0].squeeze(), cmap='gray')
