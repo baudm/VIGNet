@@ -39,7 +39,7 @@ def sample_and_combine(x_pool, y_pool):
     bb_w = 22
     bb_h = 24
     # Config: overlap
-    overlap_factor = 0.25
+    overlap_factor = 0.8
 
     area_overlap = overlap_factor * bb_w * bb_w
     min_x = round(area_overlap / bb_h)
@@ -54,10 +54,9 @@ def sample_and_combine(x_pool, y_pool):
 
     max_width = bb_w * 2 - min_x + (w - bb_w)
     max_height = bb_h * 2 - min_y + (h - bb_h)
-    max_dim = max(max_width, max_height)
+    max_dim = 52 #max(max_width, max_height)
 
     combined = np.zeros((max_dim, max_dim), dtype=x1.dtype)
-
 
     x_offset1 = np.random.randint(0, max_dim - total_width + 1)
     y_offset1 = np.random.randint(0, max_dim - total_height + 1)

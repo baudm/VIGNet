@@ -96,7 +96,7 @@ def margin_loss(y_true, y_pred):
     return K.mean(K.sum(L, 1))
 
 
-def data_generator(x_data, y_data, batch_size):
+def data_generator(x_data, y_data, batch_size, test=False):
     while True:
         data = [sample_and_combine(x_data, y_data) for i in range(batch_size)]
         # Group
@@ -104,7 +104,8 @@ def data_generator(x_data, y_data, batch_size):
         # Stack
         data = list(map(np.stack, data))
         x1, x2, x, y1, y2, y = data
-        yield [x, y1, y2], [y, x1, x2]
+        inputs = x if test else [x, y1, y2]
+        yield inputs, [y, x1, x2]
 
 
 def train(model, data, args):
@@ -136,6 +137,7 @@ def train(model, data, args):
     model.fit_generator(generator=buf(data_generator(x_train, y_train, args.batch_size), 3),
                         steps_per_epoch=int(y_train.shape[0] / args.batch_size),
                         epochs=args.epochs,
+                        initial_epoch=args.initial_epoch,
                         validation_data=buf(data_generator(x_test, y_test, args.batch_size), 3),
                         validation_steps=50,
                         callbacks=[log, tb, checkpoint, lr_decay])
@@ -172,19 +174,19 @@ def test_multi(model, data):
     y_pred, x_recon1, x_recon2 = model.predict_on_batch(x[np.newaxis])
     x_recon1 = x_recon1 * 255
     x_recon2 = x_recon2 * 255
-    fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
-    ax[0][0].imshow(x1.squeeze() * 255., cmap='gray')
-    ax[0][1].imshow(x2.squeeze() * 255., cmap='gray')
-    ax[0][2].imshow(x.squeeze() * 255., cmap='gray')
-    ax[1][0].imshow(x_recon1[0].squeeze(), cmap='gray')
-    ax[1][1].imshow(x_recon2[0].squeeze(), cmap='gray')
-    plt.show()
-    # model.compile(optimizer=optimizers.Adam(lr=args.lr),
-    #                    loss=[margin_loss, 'mse', 'mse'],
-    #                    loss_weights=[1., args.lam_recon, args.lam_recon],
-    #                    metrics={'capsnet': k_categorical_accuracy})
-    # e = model.evaluate_generator(loader(data, 10), steps=500)
-    # print(e)
+    # fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
+    # ax[0][0].imshow(x1.squeeze() * 255., cmap='gray')
+    # ax[0][1].imshow(x2.squeeze() * 255., cmap='gray')
+    # ax[0][2].imshow(x.squeeze() * 255., cmap='gray')
+    # ax[1][0].imshow(x_recon1[0].squeeze(), cmap='gray')
+    # ax[1][1].imshow(x_recon2[0].squeeze(), cmap='gray')
+    # plt.show()
+    model.compile(optimizer=optimizers.Adam(lr=args.lr),
+                       loss=[margin_loss, 'mse', 'mse'],
+                       loss_weights=[1., args.lam_recon, args.lam_recon],
+                       metrics={'capsnet': k_categorical_accuracy})
+    e = model.evaluate_generator(buf(data_generator(x_test, y_test, 10, True), 3), steps=500)
+    print(e)
 
 
 def manipulate_latent(model, data, args):
@@ -233,6 +235,7 @@ if __name__ == "__main__":
     # setting the hyper parameters
     parser = argparse.ArgumentParser(description="Capsule Network on MNIST.")
     parser.add_argument('--epochs', default=50, type=int)
+    parser.add_argument('--initial_epoch', default=0, type=int)
     parser.add_argument('--batch_size', default=100, type=int)
     parser.add_argument('--lr', default=0.001, type=float,
                         help="Initial learning rate")
