@@ -30,7 +30,7 @@ from buffering import buffered_gen_threaded as buf
 K.set_image_data_format('channels_last')
 
 
-def CapsNet(input_shape, n_class, routings):
+def CapsNet(input_shape, decoder_output_shape, n_class, routings):
     """
     A Capsule Network on MNIST.
     :param input_shape: data shape, 3d, [width, height, channels]
@@ -66,13 +66,7 @@ def CapsNet(input_shape, n_class, routings):
 
 
     # Shared Decoder model in training and prediction
-    mnist_shape = (28, 28, 1)
     decoder = models.Sequential(name='decoder')
-    # decoder.add(layers.Dense(512, activation='relu', input_dim=16*n_class))
-    # decoder.add(layers.Dense(1024, activation='relu'))
-    # decoder.add(layers.Dense(np.prod(mnist_shape), activation='sigmoid'))
-    # decoder.add(layers.Reshape(target_shape=mnist_shape, name='out_recon'))
-
     decoder.add(layers.Permute((2, 1), input_shape=(n_class, 16)))
     decoder.add(layers.Reshape((4, 4, n_class)))
     # m.add(layers.UpSampling2D())
@@ -189,8 +183,8 @@ def train(model, data, args):
     model.save_weights(args.save_dir + '/trained_model.h5')
     print('Trained model saved to \'%s/trained_model.h5\'' % args.save_dir)
 
-    from utils import plot_log
-    plot_log(args.save_dir + '/log.csv', show=True)
+    #from utils import plot_log
+    #plot_log(args.save_dir + '/log.csv', show=True)
 
     return model
 
@@ -308,11 +302,15 @@ if __name__ == "__main__":
 
     # load data
     (x_train, y_train), (x_test, y_test) = load_mnist()
-    x_sample = next(data_generator(x_train, y_train, 1, 0.0))[0][0]
+    sample_inputs, sample_outputs = next(data_generator(x_train, y_train, 1))
+    x_sample = sample_inputs[0]
+    y_sample = sample_inputs[1]
+    x_out_sample = sample_outputs[1]
 
     # define model
     model, eval_model, manipulate_model = CapsNet(input_shape=x_sample.shape[1:],
-                                                  n_class=len(np.unique(np.argmax(y_train, 1))),
+                                                  decoder_output_shape=x_out_sample.shape[1:],
+                                                  n_class=y_sample.shape[1],
                                                   routings=args.routings)
     model.summary()
 

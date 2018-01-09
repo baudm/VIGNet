@@ -10,7 +10,7 @@ import numpy as np
 
 def draw(canvas, image, offset):
     x_off, y_off = offset
-    w, h, d = image.shape
+    h, w, d = image.shape
 
     #image = image[3:-3, 3:-3]
 
@@ -18,30 +18,49 @@ def draw(canvas, image, offset):
     for x in range(w):
         for y in range(h):
             j = image[y][x]
-            if j > 1/255.:
+            if j[-1]:
                 #print(x, x_off, y, y_off)
-                canvas.itemset((y + y_off, x + x_off), j)
+                canvas[y + y_off][x + x_off] = j
+                # canvas.itemset((y + y_off, x + x_off), j)
+
+import glob, os.path
+from keras.utils import to_categorical
+
+
+FILES = glob.glob(os.path.join('/home/darwin/Projects/datasets/shapenet/transparent/screenshots/modelsByCategory', '**/*.png'), recursive=True)
+
+def get_label(f):
+    if '/car/' in f:
+        label = 0
+    elif '/bench/' in f:
+        label = 1
+    else:
+        label = 2
+    return to_categorical(label, 3)
 
 
 def sample_and_combine(x_pool, y_pool, overlap_factor):
-    n = x_pool.shape[0]
+    n = len(FILES)
     first = second = np.random.randint(n)
-    while np.array_equal(y_pool[second], y_pool[first]):
+    while np.array_equal(get_label(FILES[second]), get_label(FILES[first])):
         second = np.random.randint(n)
-    x1 = x_pool[first]
-    y1 = y_pool[first]
-    x2 = x_pool[second]
-    y2 = y_pool[second]
+    x1 = imread(FILES[first])
+    y1 = get_label(FILES[first])
+    x2 = imread(FILES[second])
+    y2 = get_label(FILES[second])
 
-    w, h, d = x1.shape
+    h, w, d = x1.shape
 
     # Config: bounding box dimensions
-    bb_w = 22
-    bb_h = 24
+    #142.03138294
+    #105.22550292
+
+    bb_w = 142/2
+    bb_h = 106/2
     # Config: overlap
     # overlap_factor = 0.0
 
-    area_overlap = overlap_factor * bb_w * bb_w
+    area_overlap = overlap_factor * bb_w * bb_h
     min_x = round(area_overlap / bb_h)
     min_y = round(area_overlap / bb_w)
     x_range = bb_w - min_x
@@ -52,14 +71,16 @@ def sample_and_combine(x_pool, y_pool, overlap_factor):
     total_width = bb_w * 2 - x_overlap + (w - bb_w)
     total_height = bb_h * 2 - y_overlap + (h - bb_h)
 
+    print(total_width, total_height, x_overlap, y_overlap)
+
     max_width = bb_w * 2 - min_x + (w - bb_w)
     max_height = bb_h * 2 - min_y + (h - bb_h)
-    max_dim = 52 #max(max_width, max_height)
+    max_dim =  max(max_width, max_height)
 
-    combined = np.zeros((max_dim, max_dim), dtype=x1.dtype)
+    combined = np.zeros((max_height, max_width, d), dtype=x1.dtype)
 
-    x_offset1 = np.random.randint(0, max_dim - total_width + 1)
-    y_offset1 = np.random.randint(0, max_dim - total_height + 1)
+    x_offset1 = np.random.randint(0, max_width - total_width + 1)
+    y_offset1 = np.random.randint(0, max_height - total_height + 1)
 
     x_offset2 = x_offset1 + bb_w - x_overlap# + (w - bb_w)/2
     y_offset2 = y_offset1 + bb_h - y_overlap# + (h - bb_h)/2
@@ -77,7 +98,7 @@ def sample_and_combine(x_pool, y_pool, overlap_factor):
     draw(combined, x2, final_off2)
     y = y1.copy()
     y[np.argmax(y2)] = 1
-    return x1, x2, combined.reshape((max_dim, max_dim, 1)), y1, y2, y
+    return x1, x2, combined, y1, y2, y
 
 
 def main():
@@ -104,6 +125,40 @@ def main():
 
     return bb_w, bb_h
 
+import glob
+from skimage.io import imread
+
+
+def main2():
+    bb_w = 0
+    bb_h = 0
+    count = 0
+
+    for img in glob.iglob('/home/darwin/Projects/datasets/shapenet/transparent/**/*.png', recursive=True):
+        x1 = imread(img)
+        try:
+            height, width, d = x1.shape
+        except ValueError:
+            print(img)
+        x1 = np.split(x1, d, axis=-1)[-1].squeeze()
+        left_x = ((x1 > 0).argmax(axis=0) > 0).argmax()
+        top_y = ((x1 > 0).argmax(axis=1) > 0).argmax()
+        x1 = np.fliplr(x1)
+        x1 = np.flipud(x1)
+        right_x = width - ((x1 > 0).argmax(axis=0) > 0).argmax()
+        bottom_y = height - ((x1 > 0).argmax(axis=1) > 0).argmax()
+        w = right_x - left_x
+        h = bottom_y - top_y
+        bb_w += w
+        bb_h += h
+        count += 1
+
+    bb_h /= count
+    bb_w /= count
+
+    print(bb_w, bb_h)
+
+
 
 if __name__ == '__main__':
-    main()
+    main2()
