@@ -96,9 +96,9 @@ def margin_loss(y_true, y_pred):
     return K.mean(K.sum(L, 1))
 
 
-def data_generator(x_data, y_data, batch_size, test=False):
+def data_generator(x_data, y_data, batch_size, overlap, test=False):
     while True:
-        data = [sample_and_combine(x_data, y_data) for i in range(batch_size)]
+        data = [sample_and_combine(x_data, y_data, overlap) for i in range(batch_size)]
         # Group
         data = zip(*data)
         # Stack
@@ -134,11 +134,11 @@ def train(model, data, args):
                   metrics={'capsnet': k_categorical_accuracy})
 
     # Training with data augmentation. If shift_fraction=0., also no augmentation.
-    model.fit_generator(generator=buf(data_generator(x_train, y_train, args.batch_size), 3),
+    model.fit_generator(generator=buf(data_generator(x_train, y_train, args.batch_size, args.overlap), 3),
                         steps_per_epoch=int(y_train.shape[0] / args.batch_size),
                         epochs=args.epochs,
                         initial_epoch=args.initial_epoch,
-                        validation_data=buf(data_generator(x_test, y_test, args.batch_size), 3),
+                        validation_data=buf(data_generator(x_test, y_test, args.batch_size, args.overlap), 3),
                         validation_steps=50,
                         callbacks=[log, tb, checkpoint, lr_decay])
     # End: Training with data augmentation -----------------------------------------------------------------------#
@@ -168,9 +168,9 @@ def test(model, data, args):
     plt.show()
 
 
-def test_multi(model, data):
+def test_multi(model, data, args):
     x_test, y_test = data
-    x1, x2, x, y1, y2, y = sample_and_combine(x_test, y_test)
+    x1, x2, x, y1, y2, y = sample_and_combine(x_test, y_test, overlap_factor=0.0)
     y_pred, x_recon1, x_recon2 = model.predict_on_batch(x[np.newaxis])
     x_recon1 = x_recon1 * 255
     x_recon2 = x_recon2 * 255
@@ -185,8 +185,8 @@ def test_multi(model, data):
                        loss=[margin_loss, 'mse', 'mse'],
                        loss_weights=[1., args.lam_recon, args.lam_recon],
                        metrics={'capsnet': k_categorical_accuracy})
-    e = model.evaluate_generator(buf(data_generator(x_test, y_test, 10, True), 3), steps=500)
-    print(e)
+    e = model.evaluate_generator(buf(data_generator(x_test, y_test, 10, args.overlap, True), 3), steps=500)
+    print(model.metrics_names, e)
 
 
 def manipulate_latent(model, data, args):
@@ -237,6 +237,7 @@ if __name__ == "__main__":
     parser.add_argument('--epochs', default=50, type=int)
     parser.add_argument('--initial_epoch', default=0, type=int)
     parser.add_argument('--batch_size', default=100, type=int)
+    parser.add_argument('--overlap', default=0.8, type=float)
     parser.add_argument('--lr', default=0.001, type=float,
                         help="Initial learning rate")
     parser.add_argument('--lr_decay', default=0.9, type=float,
@@ -264,7 +265,7 @@ if __name__ == "__main__":
 
     # load data
     (x_train, y_train), (x_test, y_test) = load_mnist()
-    x_sample = next(data_generator(x_train, y_train, 1))[0][0]
+    x_sample = next(data_generator(x_train, y_train, 1, 0.0))[0][0]
 
     # define model
     model, eval_model, manipulate_model = CapsNet(input_shape=x_sample.shape[1:],
@@ -281,4 +282,4 @@ if __name__ == "__main__":
         if args.weights is None:
             print('No weights are provided. Will test using random initialized weights.')
         #manipulate_latent(manipulate_model, (x_test, y_test), args)
-        test_multi(model=eval_model, data=(x_test, y_test))
+        test_multi(model=eval_model, data=(x_test, y_test), args=args)

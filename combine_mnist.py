@@ -23,7 +23,7 @@ def draw(canvas, image, offset):
                 canvas.itemset((y + y_off, x + x_off), j)
 
 
-def sample_and_combine(x_pool, y_pool):
+def sample_and_combine(x_pool, y_pool, overlap_factor):
     n = x_pool.shape[0]
     first = second = np.random.randint(n)
     while np.array_equal(y_pool[second], y_pool[first]):
@@ -39,7 +39,7 @@ def sample_and_combine(x_pool, y_pool):
     bb_w = 22
     bb_h = 24
     # Config: overlap
-    overlap_factor = 0.8
+    # overlap_factor = 0.0
 
     area_overlap = overlap_factor * bb_w * bb_w
     min_x = round(area_overlap / bb_h)
