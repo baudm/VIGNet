@@ -72,14 +72,14 @@ class Mask(layers.Layer):
         # inputs.shape=[None, num_capsule, dim_capsule]
         # mask.shape=[None, num_capsule]
         # masked.shape=[None, num_capsule * dim_capsule]
-        masked = K.batch_flatten(inputs * K.expand_dims(mask, -1))
+        masked = inputs * K.expand_dims(mask, -1)
         return masked
 
     def compute_output_shape(self, input_shape):
         if type(input_shape[0]) is tuple:  # true label provided
-            return tuple([None, input_shape[0][1] * input_shape[0][2]])
+            return tuple([None, input_shape[0][1], input_shape[0][2]])
         else:  # no true label provided
-            return tuple([None, input_shape[1] * input_shape[2]])
+            return tuple([None, input_shape[1], input_shape[2]])
 
     def get_config(self):
         config = {

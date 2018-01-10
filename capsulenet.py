@@ -60,26 +60,65 @@ def CapsNet(input_shape, n_class, routings):
     y2 = layers.Input(shape=(n_class,))
     masked_by_y1 = Mask()([digitcaps, y1])  # The true label is used to mask the output of capsule layer. For training
     masked_by_y2 = Mask()([digitcaps, y2])  # The true label is used to mask the output of capsule layer. For training
-    masked1 = Mask(1)(digitcaps)  # Mask using the capsule with maximal length. For prediction
+    masked1 = Mask(1)(digitcaps) # Mask using the capsule with maximal length. For prediction
     masked2 = Mask(2)(digitcaps)  # Mask using the capsule with maximal length. For prediction
+
+
 
     # Shared Decoder model in training and prediction
     mnist_shape = (28, 28, 1)
     decoder = models.Sequential(name='decoder')
-    decoder.add(layers.Dense(512, activation='relu', input_dim=16*n_class))
-    decoder.add(layers.Dense(1024, activation='relu'))
-    decoder.add(layers.Dense(np.prod(mnist_shape), activation='sigmoid'))
-    decoder.add(layers.Reshape(target_shape=mnist_shape, name='out_recon'))
+    # decoder.add(layers.Dense(512, activation='relu', input_dim=16*n_class))
+    # decoder.add(layers.Dense(1024, activation='relu'))
+    # decoder.add(layers.Dense(np.prod(mnist_shape), activation='sigmoid'))
+    # decoder.add(layers.Reshape(target_shape=mnist_shape, name='out_recon'))
+
+    decoder.add(layers.Permute((2, 1), input_shape=(n_class, 16)))
+    decoder.add(layers.Reshape((4, 4, n_class)))
+    # m.add(layers.UpSampling2D())
+    decoder.add(layers.Conv2DTranspose(n_class, 3))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(n_class, 3, padding='same'))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.UpSampling2D())
+    decoder.add(layers.Conv2DTranspose(n_class, 3, padding='same'))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(n_class, 3, padding='same'))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.UpSampling2D())
+    decoder.add(layers.Conv2DTranspose(n_class, 3))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(n_class, 3))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(1, 1, padding='same'))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('sigmoid', name='out_recon'))
 
     # Models for training and evaluation (prediction)
     train_model = models.Model([x, y1, y2], [out_caps, decoder(masked_by_y1), decoder(masked_by_y2)])
     eval_model = models.Model(x, [out_caps, decoder(masked1), decoder(masked2)])
 
+    from keras.utils.vis_utils import plot_model
+    plot_model(train_model, show_shapes=True)
+
     # manipulate model
-    noise = layers.Input(shape=(n_class, 16))
-    noised_digitcaps = layers.Add()([digitcaps, noise])
-    masked_noised_y = Mask()([noised_digitcaps, y1])
-    manipulate_model = models.Model([x, y1, noise], decoder(masked_noised_y))
+    manipulate_model = train_model
+    # noise = layers.Input(shape=(n_class, 16))
+    # noised_digitcaps = layers.Add()([digitcaps, noise])
+    # masked_noised_y = Mask()([noised_digitcaps, y1])
+    # manipulate_model = models.Model([x, y1, noise], decoder(masked_noised_y))
     return train_model, eval_model, manipulate_model
 
 
