@@ -76,33 +76,37 @@ def CapsNet(input_shape, n_class, routings):
     decoder.add(layers.Permute((2, 1), input_shape=(n_class, 16)))
     decoder.add(layers.Reshape((4, 4, n_class)))
     # m.add(layers.UpSampling2D())
-    decoder.add(layers.Conv2DTranspose(n_class, 3))
+
+    decoder.add(layers.Conv2DTranspose(32, 1, padding='same'))
     decoder.add(layers.BatchNormalization())
     decoder.add(layers.Activation('relu'))
 
-    decoder.add(layers.Conv2DTranspose(n_class, 3, padding='same'))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
 
-    decoder.add(layers.UpSampling2D())
-    decoder.add(layers.Conv2DTranspose(n_class, 3, padding='same'))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(n_class, 3, padding='same'))
+    decoder.add(layers.Conv2DTranspose(32, 3))
     decoder.add(layers.BatchNormalization())
     decoder.add(layers.Activation('relu'))
 
     decoder.add(layers.UpSampling2D())
-    decoder.add(layers.Conv2DTranspose(n_class, 3))
+
+    decoder.add(layers.Conv2DTranspose(16, 3, padding='same'))
     decoder.add(layers.BatchNormalization())
     decoder.add(layers.Activation('relu'))
 
-    decoder.add(layers.Conv2DTranspose(n_class, 3))
+    decoder.add(layers.Conv2DTranspose(16, 3, padding='same'))
     decoder.add(layers.BatchNormalization())
     decoder.add(layers.Activation('relu'))
 
-    decoder.add(layers.Conv2DTranspose(1, 1, padding='same'))
+    decoder.add(layers.UpSampling2D())
+
+    decoder.add(layers.Conv2DTranspose(8, 3))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(4, 3))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(1, 3, padding='same'))
     decoder.add(layers.BatchNormalization())
     decoder.add(layers.Activation('sigmoid', name='out_recon'))
 
@@ -111,7 +115,7 @@ def CapsNet(input_shape, n_class, routings):
     eval_model = models.Model(x, [out_caps, decoder(masked1), decoder(masked2)])
 
     from keras.utils.vis_utils import plot_model
-    plot_model(train_model, show_shapes=True)
+    plot_model(decoder, show_shapes=True)
 
     # manipulate model
     manipulate_model = train_model
