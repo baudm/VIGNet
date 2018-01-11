@@ -178,7 +178,7 @@ def train(model, data, args):
                         epochs=args.epochs,
                         initial_epoch=args.initial_epoch,
                         validation_data=buf(data_generator(x_test, y_test, args.batch_size, args.overlap), 3),
-                        validation_steps=50,
+                        validation_steps=500,
                         callbacks=[log, tb, checkpoint, lr_decay])
     # End: Training with data augmentation -----------------------------------------------------------------------#
 
