@@ -150,7 +150,7 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
 
     decoder.add(layers.Conv2DTranspose(3, (9, 13), dilation_rate=1))
     decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
+    decoder.add(layers.Activation('sigmoid', name='out_recon'))
 
 
     # decoder.summary()
@@ -267,7 +267,7 @@ def train(model, data, args):
     log = callbacks.CSVLogger(args.save_dir + '/log.csv')
     tb = callbacks.TensorBoard(log_dir=args.save_dir + '/tensorboard-logs',
                                batch_size=args.batch_size, histogram_freq=int(args.debug))
-    checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/weights-{epoch:02d}.h5', monitor='val_capsnet_k_categorical_accuracy',
+    checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/weights-{epoch:02d}.h5', monitor='val_decoder_loss_1',
                                            save_best_only=True, save_weights_only=True, verbose=1)
     lr_decay = callbacks.LearningRateScheduler(schedule=lambda epoch: args.lr * (args.lr_decay ** epoch))
 
