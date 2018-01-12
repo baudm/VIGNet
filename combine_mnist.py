@@ -20,7 +20,7 @@ def draw(canvas, image, offset):
             j = image[y][x]
             if j[-1]:
                 #print(x, x_off, y, y_off)
-                canvas[y + y_off][x + x_off] = j
+                canvas[y + y_off][x + x_off] = j[:3]
                 # canvas.itemset((y + y_off, x + x_off), j)
 
 import glob, os.path
@@ -34,9 +34,9 @@ def get_label(f):
         label = 0
     elif '/bench/' in f:
         label = 1
-    else:
-        label = 2
-    return to_categorical(label, 3)
+    # else:
+    #     label = 2
+    return to_categorical(label, 2)
 
 
 def sample_and_combine(x_pool, y_pool, overlap_factor):
@@ -44,9 +44,9 @@ def sample_and_combine(x_pool, y_pool, overlap_factor):
     first = second = np.random.randint(n)
     while np.array_equal(get_label(FILES[second]), get_label(FILES[first])):
         second = np.random.randint(n)
-    x1 = imread(FILES[first])
+    x1 = imread(FILES[first]) / 255.
     y1 = get_label(FILES[first])
-    x2 = imread(FILES[second])
+    x2 = imread(FILES[second]) / 255.
     y2 = get_label(FILES[second])
 
     h, w, d = x1.shape
@@ -55,8 +55,8 @@ def sample_and_combine(x_pool, y_pool, overlap_factor):
     #142.03138294
     #105.22550292
 
-    bb_w = 142/2
-    bb_h = 106/2
+    bb_w = 142//2
+    bb_h = 106//2
     # Config: overlap
     # overlap_factor = 0.0
 
@@ -71,13 +71,13 @@ def sample_and_combine(x_pool, y_pool, overlap_factor):
     total_width = bb_w * 2 - x_overlap + (w - bb_w)
     total_height = bb_h * 2 - y_overlap + (h - bb_h)
 
-    print(total_width, total_height, x_overlap, y_overlap)
+    # print(total_width, total_height, x_overlap, y_overlap)
 
     max_width = bb_w * 2 - min_x + (w - bb_w)
     max_height = bb_h * 2 - min_y + (h - bb_h)
-    max_dim =  max(max_width, max_height)
+    max_dim = max(max_width, max_height)
 
-    combined = np.zeros((max_height, max_width, d), dtype=x1.dtype)
+    combined = np.zeros((max_height, max_width, 3), dtype=x1.dtype)
 
     x_offset1 = np.random.randint(0, max_width - total_width + 1)
     y_offset1 = np.random.randint(0, max_height - total_height + 1)
@@ -98,7 +98,7 @@ def sample_and_combine(x_pool, y_pool, overlap_factor):
     draw(combined, x2, final_off2)
     y = y1.copy()
     y[np.argmax(y2)] = 1
-    return x1, x2, combined, y1, y2, y
+    return x1[:,:,:3], x2[:,:,:3], combined, y1, y2, y
 
 
 def main():

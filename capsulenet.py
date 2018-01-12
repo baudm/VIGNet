@@ -30,7 +30,7 @@ from buffering import buffered_gen_threaded as buf
 K.set_image_data_format('channels_last')
 
 
-def CapsNet(input_shape, decoder_output_shape, n_class, routings):
+def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=16):
     """
     A Capsule Network on MNIST.
     :param input_shape: data shape, 3d, [width, height, channels]
@@ -45,10 +45,10 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings):
     conv1 = layers.Conv2D(filters=256, kernel_size=9, strides=1, padding='valid', activation='relu', name='conv1')(x)
 
     # Layer 2: Conv2D layer with `squash` activation, then reshape to [None, num_capsule, dim_capsule]
-    primarycaps = PrimaryCap(conv1, dim_capsule=8, n_channels=32, kernel_size=9, strides=2, padding='valid')
+    primarycaps = PrimaryCap(conv1, dim_capsule=capsule_size//2, n_channels=32, kernel_size=9, strides=2, padding='valid')
 
     # Layer 3: Capsule layer. Routing algorithm works here.
-    digitcaps = CapsuleLayer(num_capsule=n_class, dim_capsule=16, routings=routings,
+    digitcaps = CapsuleLayer(num_capsule=n_class, dim_capsule=capsule_size, routings=routings,
                              name='digitcaps')(primarycaps)
 
     # Layer 4: This is an auxiliary layer to replace each capsule with its length. Just to match the true label's shape.
@@ -66,43 +66,148 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings):
 
 
     # Shared Decoder model in training and prediction
+    root = int(np.sqrt(capsule_size))
     decoder = models.Sequential(name='decoder')
-    decoder.add(layers.Permute((2, 1), input_shape=(n_class, 16)))
-    decoder.add(layers.Reshape((4, 4, n_class)))
+    decoder.add(layers.Permute((2, 1), input_shape=(n_class, capsule_size)))
+    decoder.add(layers.Reshape((root, root, n_class)))
     # m.add(layers.UpSampling2D())
 
-    decoder.add(layers.Conv2DTranspose(32, 1, padding='same'))
+    decoder.add(layers.Conv2DTranspose(256, 1, padding='same'))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(512, 1, padding='same'))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(128, 3, dilation_rate=1))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(128, 3, dilation_rate=2))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(128, 3, dilation_rate=3))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(64, 5, dilation_rate=1))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(64, 5, dilation_rate=2))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(64, 5, dilation_rate=3))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(32, 7, dilation_rate=1))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(32, 7, dilation_rate=2))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(32, 7, dilation_rate=3))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(16, (7, 9), dilation_rate=1))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(16, (7, 9), dilation_rate=2))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(16, (7, 9), dilation_rate=3))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(8, (7, 11), dilation_rate=1))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(8, (7, 11), dilation_rate=2))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(8, (7, 11), dilation_rate=3))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(4, (7, 11), dilation_rate=1))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(4, (7, 13), dilation_rate=2))
+    decoder.add(layers.BatchNormalization())
+    decoder.add(layers.Activation('relu'))
+
+    decoder.add(layers.Conv2DTranspose(3, (9, 13), dilation_rate=1))
     decoder.add(layers.BatchNormalization())
     decoder.add(layers.Activation('relu'))
 
 
-    decoder.add(layers.Conv2DTranspose(32, 3))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
+    # decoder.summary()
 
-    decoder.add(layers.UpSampling2D())
 
-    decoder.add(layers.Conv2DTranspose(16, 3, padding='same'))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(16, 3, padding='same'))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.UpSampling2D())
-
-    decoder.add(layers.Conv2DTranspose(8, 3))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(4, 3))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(1, 3, padding='same'))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('sigmoid', name='out_recon'))
+    # "Dense" layers
+    #
+    # decoder.add(layers.Conv2DTranspose(128, 1, padding='same'))
+    # decoder.add(layers.BatchNormalization())
+    # decoder.add(layers.Activation('relu'))
+    #
+    # decoder.add(layers.Conv2DTranspose(64, 1, padding='same', dilation_rate=))
+    # decoder.add(layers.BatchNormalization())
+    # decoder.add(layers.Activation('relu'))
+    #
+    # # Prepare shape
+    #
+    # decoder.add(layers.ZeroPadding2D((0, 1)))
+    # decoder.add(layers.Conv2DTranspose(64, 3, dilation_rate=(2, 2)))
+    # decoder.add(layers.BatchNormalization())
+    # decoder.add(layers.Activation('relu'))
+    #
+    # # decoder.add(layers.UpSampling2D())
+    #
+    # decoder.add(layers.Conv2DTranspose(32, 3, padding='same'))
+    # decoder.add(layers.BatchNormalization())
+    # decoder.add(layers.Activation('relu'))
+    #
+    # decoder.add(layers.Conv2DTranspose(32, 3, padding='same'))
+    # decoder.add(layers.BatchNormalization())
+    # decoder.add(layers.Activation('relu'))
+    #
+    # decoder.add(layers.UpSampling2D())
+    #
+    # decoder.add(layers.Conv2DTranspose(16, 3, padding='same'))
+    # decoder.add(layers.BatchNormalization())
+    # decoder.add(layers.Activation('relu'))
+    #
+    # decoder.add(layers.Conv2DTranspose(16, 3, padding='same'))
+    # decoder.add(layers.BatchNormalization())
+    # decoder.add(layers.Activation('relu'))
+    #
+    # decoder.add(layers.UpSampling2D())
+    #
+    # decoder.add(layers.Conv2DTranspose(8, 3, padding='same'))
+    # decoder.add(layers.BatchNormalization())
+    # decoder.add(layers.Activation('relu'))
+    #
+    # decoder.add(layers.Conv2DTranspose(8, 3, padding='same'))
+    # decoder.add(layers.BatchNormalization())
+    # decoder.add(layers.Activation('relu'))
+    #
+    # decoder.add(layers.UpSampling2D())
+    #
+    # decoder.add(layers.Conv2DTranspose(3, 3, padding='same'))
+    # decoder.add(layers.BatchNormalization())
+    # decoder.add(layers.Activation('sigmoid', name='out_recon'))
 
     # Models for training and evaluation (prediction)
     train_model = models.Model([x, y1, y2], [out_caps, decoder(masked_by_y1), decoder(masked_by_y2)])
@@ -110,6 +215,8 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings):
 
     from keras.utils.vis_utils import plot_model
     plot_model(decoder, show_shapes=True)
+
+    # return None
 
     # manipulate model
     manipulate_model = train_model
@@ -207,23 +314,23 @@ def test(model, data, args):
 
 def test_multi(model, data, args):
     x_test, y_test = data
-    x1, x2, x, y1, y2, y = sample_and_combine(x_test, y_test, overlap_factor=0.0)
+    x1, x2, x, y1, y2, y = sample_and_combine(x_test, y_test, overlap_factor=args.overlap)
     y_pred, x_recon1, x_recon2 = model.predict_on_batch(x[np.newaxis])
-    x_recon1 = x_recon1 * 255
-    x_recon2 = x_recon2 * 255
-    # fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
-    # ax[0][0].imshow(x1.squeeze() * 255., cmap='gray')
-    # ax[0][1].imshow(x2.squeeze() * 255., cmap='gray')
-    # ax[0][2].imshow(x.squeeze() * 255., cmap='gray')
-    # ax[1][0].imshow(x_recon1[0].squeeze(), cmap='gray')
-    # ax[1][1].imshow(x_recon2[0].squeeze(), cmap='gray')
-    # plt.show()
-    model.compile(optimizer=optimizers.Adam(lr=args.lr),
-                       loss=[margin_loss, 'mse', 'mse'],
-                       loss_weights=[1., args.lam_recon, args.lam_recon],
-                       metrics={'capsnet': k_categorical_accuracy})
-    e = model.evaluate_generator(buf(data_generator(x_test, y_test, 10, args.overlap, True), 3), steps=500)
-    print(model.metrics_names, e)
+    x_recon1 = x_recon1
+    x_recon2 = x_recon2
+    fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
+    ax[0][0].imshow(x1.squeeze())
+    ax[0][1].imshow(x2.squeeze())
+    ax[0][2].imshow(x.squeeze())
+    ax[1][0].imshow(x_recon1[0].squeeze())
+    ax[1][1].imshow(x_recon2[0].squeeze())
+    plt.show()
+    # model.compile(optimizer=optimizers.Adam(lr=args.lr),
+    #                    loss=[margin_loss, 'mse', 'mse'],
+    #                    loss_weights=[1., args.lam_recon, args.lam_recon],
+    #                    metrics={'capsnet': k_categorical_accuracy})
+    # e = model.evaluate_generator(buf(data_generator(x_test, y_test, 10, args.overlap, True), 3), steps=500)
+    # print(model.metrics_names, e)
 
 
 def manipulate_latent(model, data, args):
@@ -302,7 +409,7 @@ if __name__ == "__main__":
 
     # load data
     (x_train, y_train), (x_test, y_test) = load_mnist()
-    sample_inputs, sample_outputs = next(data_generator(x_train, y_train, 1))
+    sample_inputs, sample_outputs = next(data_generator(x_train, y_train, 1, args.overlap))
     x_sample = sample_inputs[0]
     y_sample = sample_inputs[1]
     x_out_sample = sample_outputs[1]
@@ -311,7 +418,7 @@ if __name__ == "__main__":
     model, eval_model, manipulate_model = CapsNet(input_shape=x_sample.shape[1:],
                                                   decoder_output_shape=x_out_sample.shape[1:],
                                                   n_class=y_sample.shape[1],
-                                                  routings=args.routings)
+                                                  routings=args.routings, capsule_size=16)
     model.summary()
 
     # train or test
