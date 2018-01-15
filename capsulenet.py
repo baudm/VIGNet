@@ -29,6 +29,7 @@ from buffering import buffered_gen_threaded as buf
 
 K.set_image_data_format('channels_last')
 
+from keras.utils.vis_utils import plot_model
 
 def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=16):
     """
@@ -45,11 +46,64 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
     conv1 = layers.Conv2D(filters=256, kernel_size=9, strides=1, padding='valid', activation='relu', name='conv1')(x)
 
     # Layer 2: Conv2D layer with `squash` activation, then reshape to [None, num_capsule, dim_capsule]
-    primarycaps = PrimaryCap(conv1, dim_capsule=capsule_size//2, n_channels=32, kernel_size=9, strides=2, padding='valid')
+    primarycaps = PrimaryCap(conv1, dim_capsule=8, n_channels=32, kernel_size=9, strides=2, padding='valid')
 
     # Layer 3: Capsule layer. Routing algorithm works here.
     digitcaps = CapsuleLayer(num_capsule=n_class, dim_capsule=capsule_size, routings=routings,
                              name='digitcaps')(primarycaps)
+
+    def res_decoder():
+
+        dcaps = layers.Input((n_class, capsule_size))
+        pcaps = layers.Input((100352, 8))
+        conv = layers.Input((120, 120, 256))
+
+        y = layers.Reshape((1, 1, n_class*capsule_size))(dcaps)
+
+        y = layers.BatchNormalization()(y)
+        y = layers.Activation('relu')(y)
+        y = layers.Conv2DTranspose(64, 9)(y)
+
+        y = layers.BatchNormalization()(y)
+        y = layers.Activation('relu')(y)
+        y = layers.Conv2DTranspose(128, 9, strides=2)(y)
+
+        y = layers.BatchNormalization()(y)
+        y = layers.Activation('relu')(y)
+        y = layers.Conv2DTranspose(128, 8, strides=2)(y)
+
+        p = layers.Reshape((56, 56, 256))(pcaps)
+        p = layers.Conv2D(128, 1)(p)
+        y = layers.Add()([y, p])
+
+        y = layers.BatchNormalization()(y)
+        y = layers.Activation('relu')(y)
+        y = layers.Conv2DTranspose(128, 10, strides=2)(y)
+
+        p = layers.Conv2D(128, 1)(conv)
+        y = layers.Add()([y, p])
+
+        y = layers.BatchNormalization()(y)
+        y = layers.Activation('relu')(y)
+        y = layers.Conv2DTranspose(64, 5)(y)
+
+        y = layers.BatchNormalization()(y)
+        y = layers.Activation('relu')(y)
+        y = layers.Conv2DTranspose(32, 3)(y)
+
+        y = layers.BatchNormalization()(y)
+        y = layers.Activation('relu')(y)
+        y = layers.Conv2DTranspose(3, 3)(y)
+
+        m = models.Model([conv, pcaps, dcaps], y, name='decoder')
+        return m
+
+
+    #
+    # m = models.Model(x, y)
+    # m.summary()
+    # plot_model(m, show_shapes=True)
+    # return
 
     # Layer 4: This is an auxiliary layer to replace each capsule with its length. Just to match the true label's shape.
     # If using tensorflow, this will not be necessary. :)
@@ -152,9 +206,10 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
     decoder.add(layers.BatchNormalization())
     decoder.add(layers.Activation('sigmoid', name='out_recon'))
 
+    decoder = res_decoder()
 
     # decoder.summary()
-
+    #
 
     # "Dense" layers
     #
@@ -210,11 +265,9 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
     # decoder.add(layers.Activation('sigmoid', name='out_recon'))
 
     # Models for training and evaluation (prediction)
-    train_model = models.Model([x, y1, y2], [out_caps, decoder(masked_by_y1), decoder(masked_by_y2)])
-    eval_model = models.Model(x, [out_caps, decoder(masked1), decoder(masked2)])
-
-    from keras.utils.vis_utils import plot_model
-    plot_model(decoder, show_shapes=True)
+    train_model = models.Model([x, y1, y2], [out_caps, decoder([conv1, primarycaps, masked_by_y1]), decoder([conv1, primarycaps, masked_by_y2])])
+    eval_model = models.Model(x, [out_caps, decoder([conv1, primarycaps, masked1]), decoder([conv1, primarycaps, masked2])])
+    plot_model(train_model, show_shapes=True)
 
     # return None
 
@@ -409,15 +462,15 @@ if __name__ == "__main__":
 
     # load data
     (x_train, y_train), (x_test, y_test) = load_mnist()
-    sample_inputs, sample_outputs = next(data_generator(x_train, y_train, 1, args.overlap))
-    x_sample = sample_inputs[0]
-    y_sample = sample_inputs[1]
-    x_out_sample = sample_outputs[1]
+    # sample_inputs, sample_outputs = next(data_generator(x_train, y_train, 1, args.overlap))
+    # x_sample = sample_inputs[0]
+    # y_sample = sample_inputs[1]
+    # x_out_sample = sample_outputs[1]
 
     # define model
-    model, eval_model, manipulate_model = CapsNet(input_shape=x_sample.shape[1:],
-                                                  decoder_output_shape=x_out_sample.shape[1:],
-                                                  n_class=y_sample.shape[1],
+    model, eval_model, manipulate_model = CapsNet(input_shape=(128, 128, 3),
+                                                  decoder_output_shape=(128, 128, 3),
+                                                  n_class=2,
                                                   routings=args.routings, capsule_size=16)
     model.summary()
 
