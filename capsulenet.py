@@ -31,6 +31,124 @@ K.set_image_data_format('channels_last')
 
 from keras.utils.vis_utils import plot_model
 
+
+def conv2d_bn(x, filters, kernel_size, strides=(1, 1), padding='valid', activation='relu'):
+    x = layers.Conv2D(filters, kernel_size, strides=strides, padding=padding)(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation(activation)(x)
+    return x
+
+
+def conv2d_transpose_bn(x, filters, kernel_size, strides=(1, 1), padding='valid', activation='relu'):
+    x = layers.Conv2DTranspose(filters, kernel_size, strides=strides, padding=padding)(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation(activation)(x)
+    return x
+
+
+def res_conv2d_transpose_bn(x, filters, kernel_size, strides=(1, 1), padding='valid', activation='relu'):
+    # block 1
+    res = layers.BatchNormalization()(x)
+    res = layers.Activation(activation)(res)
+    res = layers.Conv2DTranspose(filters, kernel_size, strides=strides, padding=padding)(res)
+    # block 2
+    res = layers.BatchNormalization()(res)
+    res = layers.Activation(activation)(res)
+    res = layers.Conv2DTranspose(filters, kernel_size, strides=strides, padding=padding)(res)
+    return layers.add([x, res])
+
+
+
+from keras.layers import Conv2D, BatchNormalization, Activation, Conv2DTranspose
+
+
+def identity_block(input_tensor, kernel_size, filters, stage, block):
+    """The identity block is the block that has no conv layer at shortcut.
+
+    # Arguments
+        input_tensor: input tensor
+        kernel_size: default 3, the kernel size of middle conv layer at main path
+        filters: list of integers, the filters of 3 conv layer at main path
+        stage: integer, current stage label, used for generating layer names
+        block: 'a','b'..., current block label, used for generating layer names
+
+    # Returns
+        Output tensor for the block.
+    """
+    if K.image_data_format() == 'channels_last':
+        bn_axis = 3
+    else:
+        bn_axis = 1
+    conv_name_base = 'res' + str(stage) + block + '_branch'
+    bn_name_base = 'bn' + str(stage) + block + '_branch'
+
+    filters_bottleneck = filters // 4
+
+    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(input_tensor)
+    x = Activation('relu')(x)
+    x = Conv2DTranspose(filters_bottleneck, (1, 1), padding='same', name=conv_name_base + '2a')(x)
+
+    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
+    x = Activation('relu')(x)
+    x = Conv2DTranspose(filters_bottleneck, kernel_size,
+               padding='same', name=conv_name_base + '2b')(x)
+
+    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
+    x = Activation('relu')(x)
+    x = Conv2DTranspose(filters, (1, 1), padding='same', name=conv_name_base + '2c')(x)
+
+    x = layers.add([x, input_tensor])
+    return x
+
+
+def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2, 2)):
+    """A block that has a conv layer at shortcut.
+
+    # Arguments
+        input_tensor: input tensor
+        kernel_size: default 3, the kernel size of middle conv layer at main path
+        filters: list of integers, the filters of 3 conv layer at main path
+        stage: integer, current stage label, used for generating layer names
+        block: 'a','b'..., current block label, used for generating layer names
+
+    # Returns
+        Output tensor for the block.
+
+    Note that from stage 3, the first conv layer at main path is with strides=(2,2)
+    And the shortcut should have strides=(2,2) as well
+    """
+    if K.image_data_format() == 'channels_last':
+        bn_axis = 3
+    else:
+        bn_axis = 1
+    conv_name_base = 'res' + str(stage) + block + '_branch'
+    bn_name_base = 'bn' + str(stage) + block + '_branch'
+
+    filters_bottleneck = filters // 4
+
+    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(input_tensor)
+    x = Activation('relu')(x)
+
+    shortcut = Conv2DTranspose(filters, (1, 1), strides=strides, padding='same',
+                      name=conv_name_base + '1')(x)
+
+    x = Conv2DTranspose(filters_bottleneck, (1, 1), strides=strides, padding='same',
+               name=conv_name_base + '2a')(x)
+
+    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
+    x = Activation('relu')(x)
+    x = Conv2DTranspose(filters_bottleneck, kernel_size, padding='same',
+               name=conv_name_base + '2b')(x)
+
+    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
+    x = Activation('relu')(x)
+    x = Conv2DTranspose(filters, (1, 1), padding='same', name=conv_name_base + '2c')(x)
+
+    x = layers.add([x, shortcut])
+
+    return x
+
+
 def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=16):
     """
     A Capsule Network on MNIST.
@@ -54,47 +172,59 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
 
     def res_decoder():
         dcaps = layers.Input((n_class, capsule_size))
-        pcaps = layers.Input((100352, 8))
+        # pcaps = layers.Input((100352, 8))
         conv = layers.Input((120, 120, 256))
 
         y = layers.Reshape((1, 1, n_class*capsule_size))(dcaps)
 
-        y = layers.BatchNormalization()(y)
-        y = layers.Activation('relu')(y)
-        y = layers.Conv2DTranspose(64, 9)(y)
+        y = Conv2DTranspose(32, 7)(y)
+        y = BatchNormalization()(y)
+        y = Activation('relu')(y)
 
-        y = layers.BatchNormalization()(y)
-        y = layers.Activation('relu')(y)
-        y = layers.Conv2DTranspose(128, 9, strides=2)(y)
+        y = identity_block(y, 3, 32, 'a', 'b2')
+        y = identity_block(y, 3, 32, 'a', 'b3')
+        y = conv_block(y, 3, 64, 'a', 'b1')
 
-        y = layers.BatchNormalization()(y)
-        y = layers.Activation('relu')(y)
-        y = layers.Conv2DTranspose(128, 8, strides=2)(y)
+        y = identity_block(y, 3, 64, 'a', 'b411')
+        y = identity_block(y, 3, 64, 'a', 'b4112')
+        y = identity_block(y, 3, 64, 'a', 'b512')
+        y = conv_block(y, 3, 128, 'a', 'b6')
 
-        p = layers.Reshape((56, 56, 256))(pcaps)
-        p = layers.Conv2D(128, 1)(p)
-        y = layers.Add()([y, p])
+        y = identity_block(y, 3, 128, 'a', 'b712')
+        y = identity_block(y, 3, 128, 'a', 'b71')
+        y = identity_block(y, 3, 128, 'a', 'b7a')
+        y = identity_block(y, 3, 128, 'a', 'ba7')
+        y = identity_block(y, 3, 128, 'a', 'ba8')
+        y = conv_block(y, 3, 256, 'a', 'b9')
 
-        y = layers.BatchNormalization()(y)
-        y = layers.Activation('relu')(y)
-        y = layers.Conv2DTranspose(128, 10, strides=2)(y)
+        y = identity_block(y, 3, 256, 'a', 'b17')
+        y = identity_block(y, 3, 256, 'a', 'b1aa7')
+        y = identity_block(y, 3, 256, 'a', 'b18')
+        y = conv_block(y, 3, 256, 'a', 'b91')
 
-        p = layers.Conv2D(128, 1)(conv)
-        y = layers.Add()([y, p])
+        y = Conv2DTranspose(128, 5)(y)
+        y = BatchNormalization()(y)
+        y = Activation('relu')(y)
 
-        y = layers.BatchNormalization()(y)
-        y = layers.Activation('relu')(y)
-        y = layers.Conv2DTranspose(64, 5)(y)
+        y = Conv2DTranspose(256, 5)(y)
+        y = BatchNormalization()(y)
+        y = Activation('relu')(y)
 
-        y = layers.BatchNormalization()(y)
-        y = layers.Activation('relu')(y)
-        y = layers.Conv2DTranspose(32, 3)(y)
+        y = layers.concatenate([y, conv])
 
-        y = layers.BatchNormalization()(y)
-        y = layers.Conv2DTranspose(3, 3)(y)
+        y = Conv2DTranspose(16, 5)(y)
+        y = BatchNormalization()(y)
+        y = Activation('relu')(y)
+
+        y = Conv2DTranspose(3, 5)(y)
+        y = BatchNormalization()(y)
+
+
         y = layers.Activation('sigmoid', name='out_recon')(y)
 
-        m = models.Model([conv, pcaps, dcaps], y, name='decoder')
+        m = models.Model([conv, dcaps], y, name='decoder')
+        m.summary()
+        plot_model(m, show_shapes=True, to_file='decoder.png')
         return m
 
 
@@ -122,8 +252,8 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
     decoder = res_decoder()
 
     # Models for training and evaluation (prediction)
-    train_model = models.Model([x, y1, y2], [out_caps, decoder([conv1, primarycaps, masked_by_y1]), decoder([conv1, primarycaps, masked_by_y2])])
-    eval_model = models.Model(x, [out_caps, decoder([conv1, primarycaps, masked1]), decoder([conv1, primarycaps, masked2])])
+    train_model = models.Model([x, y1, y2], [out_caps, decoder([conv1, masked_by_y1]), decoder([conv1, masked_by_y2])])
+    eval_model = models.Model(x, [out_caps, decoder([conv1, masked1]), decoder([conv1, masked2])])
     plot_model(train_model, show_shapes=True)
 
     # return None

@@ -54,36 +54,41 @@ def sample_and_combine(x_pool, y_pool, overlap_factor):
     # Config: bounding box dimensions
     #142.03138294
     #105.22550292
+    #
+    # bb_w = 142//2
+    # bb_h = 106//2
+    # # Config: overlap
+    # # overlap_factor = 0.0
+    #
+    # area_overlap = overlap_factor * bb_w * bb_h
+    # min_x = round(area_overlap / bb_h)
+    # min_y = round(area_overlap / bb_w)
+    # x_range = bb_w - min_x
+    # left_x = np.random.randint(-x_range, x_range + 1)
+    # x_overlap = bb_w - abs(left_x)
+    # y_overlap = round(area_overlap / x_overlap) if x_overlap else 0
+    #
+    # total_width = bb_w * 2 - x_overlap + (w - bb_w)
+    # total_height = bb_h * 2 - y_overlap + (h - bb_h)
+    #
+    # # print(total_width, total_height, x_overlap, y_overlap)
+    #
+    # max_width = bb_w * 2 - min_x + (w - bb_w)
+    # max_height = bb_h * 2 - min_y + (h - bb_h)
+    # max_dim = max(max_width, max_height)
+    #
+    combined = np.zeros((128, 128, 3), dtype=x1.dtype)
+    #
+    # x_offset1 = np.random.randint(0, max_width - total_width + 1)
+    # y_offset1 = np.random.randint(0, max_height - total_height + 1)
+    #
+    # x_offset2 = x_offset1 + bb_w - x_overlap# + (w - bb_w)/2
+    # y_offset2 = y_offset1 + bb_h - y_overlap# + (h - bb_h)/2
 
-    bb_w = 142//2
-    bb_h = 106//2
-    # Config: overlap
-    # overlap_factor = 0.0
-
-    area_overlap = overlap_factor * bb_w * bb_h
-    min_x = round(area_overlap / bb_h)
-    min_y = round(area_overlap / bb_w)
-    x_range = bb_w - min_x
-    left_x = np.random.randint(-x_range, x_range + 1)
-    x_overlap = bb_w - abs(left_x)
-    y_overlap = round(area_overlap / x_overlap) if x_overlap else 0
-
-    total_width = bb_w * 2 - x_overlap + (w - bb_w)
-    total_height = bb_h * 2 - y_overlap + (h - bb_h)
-
-    # print(total_width, total_height, x_overlap, y_overlap)
-
-    max_width = bb_w * 2 - min_x + (w - bb_w)
-    max_height = bb_h * 2 - min_y + (h - bb_h)
-    max_dim = max(max_width, max_height)
-
-    combined = np.zeros((max_height, max_width, 3), dtype=x1.dtype)
-
-    x_offset1 = np.random.randint(0, max_width - total_width + 1)
-    y_offset1 = np.random.randint(0, max_height - total_height + 1)
-
-    x_offset2 = x_offset1 + bb_w - x_overlap# + (w - bb_w)/2
-    y_offset2 = y_offset1 + bb_h - y_overlap# + (h - bb_h)/2
+    x_offset1 = 0
+    y_offset1 = 0
+    x_offset2 = 0
+    y_offset2 = 128-96
 
     off1 = (round(x_offset1), round(y_offset1))
     off2 = (round(x_offset2), round(y_offset2))
@@ -96,6 +101,17 @@ def sample_and_combine(x_pool, y_pool, overlap_factor):
 
     draw(combined, x1, final_off1)
     draw(combined, x2, final_off2)
+
+    y_off1 = final_off1[1]
+    if y_off1 == 0:
+        y_pad1 = (0, 128-96)
+        y_pad2 = (128-96, 0)
+    else:
+        y_pad2 = (0, 128 - 96)
+        y_pad1 = (128 - 96, 0)
+
+    x1 = np.pad(x1, (y_pad1,(0,0),(0,0)), mode='constant', constant_values=0)
+    x2 = np.pad(x2, (y_pad2,(0,0),(0,0)), mode='constant', constant_values=0)
     y = y1.copy()
     y[np.argmax(y2)] = 1
     return x1[:,:,:3], x2[:,:,:3], combined, y1, y2, y
