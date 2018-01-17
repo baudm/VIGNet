@@ -53,7 +53,6 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
                              name='digitcaps')(primarycaps)
 
     def res_decoder():
-
         dcaps = layers.Input((n_class, capsule_size))
         pcaps = layers.Input((100352, 8))
         conv = layers.Input((120, 120, 256))
@@ -92,8 +91,8 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
         y = layers.Conv2DTranspose(32, 3)(y)
 
         y = layers.BatchNormalization()(y)
-        y = layers.Activation('relu')(y)
         y = layers.Conv2DTranspose(3, 3)(y)
+        y = layers.Activation('sigmoid', name='out_recon')(y)
 
         m = models.Model([conv, pcaps, dcaps], y, name='decoder')
         return m
@@ -120,149 +119,7 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
 
 
     # Shared Decoder model in training and prediction
-    root = int(np.sqrt(capsule_size))
-    decoder = models.Sequential(name='decoder')
-    decoder.add(layers.Permute((2, 1), input_shape=(n_class, capsule_size)))
-    decoder.add(layers.Reshape((root, root, n_class)))
-    # m.add(layers.UpSampling2D())
-
-    decoder.add(layers.Conv2DTranspose(256, 1, padding='same'))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(512, 1, padding='same'))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(128, 3, dilation_rate=1))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(128, 3, dilation_rate=2))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(128, 3, dilation_rate=3))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(64, 5, dilation_rate=1))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(64, 5, dilation_rate=2))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(64, 5, dilation_rate=3))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(32, 7, dilation_rate=1))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(32, 7, dilation_rate=2))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(32, 7, dilation_rate=3))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(16, (7, 9), dilation_rate=1))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(16, (7, 9), dilation_rate=2))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(16, (7, 9), dilation_rate=3))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(8, (7, 11), dilation_rate=1))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(8, (7, 11), dilation_rate=2))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(8, (7, 11), dilation_rate=3))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(4, (7, 11), dilation_rate=1))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(4, (7, 13), dilation_rate=2))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('relu'))
-
-    decoder.add(layers.Conv2DTranspose(3, (9, 13), dilation_rate=1))
-    decoder.add(layers.BatchNormalization())
-    decoder.add(layers.Activation('sigmoid', name='out_recon'))
-
     decoder = res_decoder()
-
-    # decoder.summary()
-    #
-
-    # "Dense" layers
-    #
-    # decoder.add(layers.Conv2DTranspose(128, 1, padding='same'))
-    # decoder.add(layers.BatchNormalization())
-    # decoder.add(layers.Activation('relu'))
-    #
-    # decoder.add(layers.Conv2DTranspose(64, 1, padding='same', dilation_rate=))
-    # decoder.add(layers.BatchNormalization())
-    # decoder.add(layers.Activation('relu'))
-    #
-    # # Prepare shape
-    #
-    # decoder.add(layers.ZeroPadding2D((0, 1)))
-    # decoder.add(layers.Conv2DTranspose(64, 3, dilation_rate=(2, 2)))
-    # decoder.add(layers.BatchNormalization())
-    # decoder.add(layers.Activation('relu'))
-    #
-    # # decoder.add(layers.UpSampling2D())
-    #
-    # decoder.add(layers.Conv2DTranspose(32, 3, padding='same'))
-    # decoder.add(layers.BatchNormalization())
-    # decoder.add(layers.Activation('relu'))
-    #
-    # decoder.add(layers.Conv2DTranspose(32, 3, padding='same'))
-    # decoder.add(layers.BatchNormalization())
-    # decoder.add(layers.Activation('relu'))
-    #
-    # decoder.add(layers.UpSampling2D())
-    #
-    # decoder.add(layers.Conv2DTranspose(16, 3, padding='same'))
-    # decoder.add(layers.BatchNormalization())
-    # decoder.add(layers.Activation('relu'))
-    #
-    # decoder.add(layers.Conv2DTranspose(16, 3, padding='same'))
-    # decoder.add(layers.BatchNormalization())
-    # decoder.add(layers.Activation('relu'))
-    #
-    # decoder.add(layers.UpSampling2D())
-    #
-    # decoder.add(layers.Conv2DTranspose(8, 3, padding='same'))
-    # decoder.add(layers.BatchNormalization())
-    # decoder.add(layers.Activation('relu'))
-    #
-    # decoder.add(layers.Conv2DTranspose(8, 3, padding='same'))
-    # decoder.add(layers.BatchNormalization())
-    # decoder.add(layers.Activation('relu'))
-    #
-    # decoder.add(layers.UpSampling2D())
-    #
-    # decoder.add(layers.Conv2DTranspose(3, 3, padding='same'))
-    # decoder.add(layers.BatchNormalization())
-    # decoder.add(layers.Activation('sigmoid', name='out_recon'))
 
     # Models for training and evaluation (prediction)
     train_model = models.Model([x, y1, y2], [out_caps, decoder([conv1, primarycaps, masked_by_y1]), decoder([conv1, primarycaps, masked_by_y2])])
