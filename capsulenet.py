@@ -177,47 +177,61 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
 
         y = layers.Reshape((1, 1, n_class*capsule_size))(dcaps)
 
-        y = Conv2DTranspose(32, 7)(y)
+        y = Conv2DTranspose(32, 2)(y)
+        # y = BatchNormalization()(y)
+        # y = Activation('relu')(y)
+
+        y = identity_block(y, 3, 32, '1', '1')
+        y = identity_block(y, 3, 32, '1', '2')
+        y = conv_block(y, 3, 64, '1', '3')
+
+        y = identity_block(y, 3, 64, '2', '1')
+        y = identity_block(y, 3, 64, '2', '2')
+        y = identity_block(y, 3, 64, '2', '3')
+        y = conv_block(y, 3, 128, '2', '4')
+
+        y = identity_block(y, 3, 128, '3', '1')
+        y = identity_block(y, 3, 128, '3', '2')
+        y = identity_block(y, 3, 128, '3', '3')
+        y = identity_block(y, 3, 128, '3', '4')
+        y = identity_block(y, 3, 128, '3', '5')
+        y = conv_block(y, 3, 256, '3', '6')
+
+        y = identity_block(y, 3, 256, '4', '1')
+        y = identity_block(y, 3, 256, '4', '2')
+        y = identity_block(y, 3, 256, '4', '3')
+        y = conv_block(y, 3, 512, '4', '4')
+
+        y = identity_block(y, 3, 512, '5', '1')
+        y = identity_block(y, 3, 512, '5', '2')
+        y = identity_block(y, 3, 512, '5', '3')
+        y = conv_block(y, 3, 512, '5', '4')
+
+        y = identity_block(y, 3, 512, '6', '1')
+        y = identity_block(y, 3, 512, '6', '2')
+        y = identity_block(y, 3, 512, '6', '3')
+        y = conv_block(y, 3, 512, '6', '4')
+
+        y = Conv2D(3, 1, padding='same')(y)
         y = BatchNormalization()(y)
-        y = Activation('relu')(y)
 
-        y = identity_block(y, 3, 32, 'a', 'b2')
-        y = identity_block(y, 3, 32, 'a', 'b3')
-        y = conv_block(y, 3, 64, 'a', 'b1')
 
-        y = identity_block(y, 3, 64, 'a', 'b411')
-        y = identity_block(y, 3, 64, 'a', 'b4112')
-        y = identity_block(y, 3, 64, 'a', 'b512')
-        y = conv_block(y, 3, 128, 'a', 'b6')
-
-        y = identity_block(y, 3, 128, 'a', 'b712')
-        y = identity_block(y, 3, 128, 'a', 'b71')
-        y = identity_block(y, 3, 128, 'a', 'b7a')
-        y = identity_block(y, 3, 128, 'a', 'ba7')
-        y = identity_block(y, 3, 128, 'a', 'ba8')
-        y = conv_block(y, 3, 256, 'a', 'b9')
-
-        y = identity_block(y, 3, 256, 'a', 'b17')
-        y = identity_block(y, 3, 256, 'a', 'b1aa7')
-        y = identity_block(y, 3, 256, 'a', 'b18')
-        y = conv_block(y, 3, 256, 'a', 'b91')
-
-        y = Conv2DTranspose(128, 5)(y)
-        y = BatchNormalization()(y)
-        y = Activation('relu')(y)
-
-        y = Conv2DTranspose(256, 5)(y)
-        y = BatchNormalization()(y)
-        y = Activation('relu')(y)
-
-        y = layers.concatenate([y, conv])
-
-        y = Conv2DTranspose(16, 5)(y)
-        y = BatchNormalization()(y)
-        y = Activation('relu')(y)
-
-        y = Conv2DTranspose(3, 5)(y)
-        y = BatchNormalization()(y)
+        # y = Conv2DTranspose(128, 5)(y)
+        # y = BatchNormalization()(y)
+        # y = Activation('relu')(y)
+        #
+        # y = Conv2DTranspose(256, 5)(y)
+        # y = BatchNormalization()(y)
+        # y = Activation('relu')(y)
+        #
+        # # y = layers.concatenate([y, conv])
+        #
+        # y = Conv2DTranspose(64, 5)(y)
+        # y = BatchNormalization()(y)
+        # y = Activation('relu')(y)
+        #
+        # y = Conv2DTranspose(3, 5)(y)
+        # y = BatchNormalization()(y)
 
 
         y = layers.Activation('sigmoid', name='out_recon')(y)
@@ -307,7 +321,7 @@ def train(model, data, args):
     log = callbacks.CSVLogger(args.save_dir + '/log.csv')
     tb = callbacks.TensorBoard(log_dir=args.save_dir + '/tensorboard-logs',
                                batch_size=args.batch_size, histogram_freq=int(args.debug))
-    checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/weights-{epoch:02d}.h5', monitor='val_decoder_loss_1',
+    checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/weights-{epoch:02d}.h5', monitor='decoder_loss_1',
                                            save_best_only=True, save_weights_only=True, verbose=1)
     lr_decay = callbacks.LearningRateScheduler(schedule=lambda epoch: args.lr * (args.lr_decay ** epoch))
 
@@ -319,11 +333,11 @@ def train(model, data, args):
 
     # Training with data augmentation. If shift_fraction=0., also no augmentation.
     model.fit_generator(generator=buf(data_generator(x_train, y_train, args.batch_size, args.overlap), 3),
-                        steps_per_epoch=int(y_train.shape[0] / args.batch_size),
+                        steps_per_epoch=1000,
                         epochs=args.epochs,
                         initial_epoch=args.initial_epoch,
-                        validation_data=buf(data_generator(x_test, y_test, args.batch_size, args.overlap), 3),
-                        validation_steps=500,
+                        # validation_data=buf(data_generator(x_test, y_test, args.batch_size, args.overlap), 3),
+                        # validation_steps=500,
                         callbacks=[log, tb, checkpoint, lr_decay])
     # End: Training with data augmentation -----------------------------------------------------------------------#
 
