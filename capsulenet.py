@@ -161,10 +161,12 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
     x = layers.Input(shape=input_shape)
 
     # Layer 1: Just a conventional Conv2D layer
-    conv1 = layers.Conv2D(filters=256, kernel_size=9, strides=1, padding='valid', activation='relu', name='conv1')(x)
+    conv1 = layers.Conv2D(filters=256, kernel_size=17, strides=1, padding='valid', name='conv1')(x)
+    conv1 = layers.BatchNormalization()(conv1)
+    conv1 = layers.Activation('relu')(conv1)
 
     # Layer 2: Conv2D layer with `squash` activation, then reshape to [None, num_capsule, dim_capsule]
-    primarycaps = PrimaryCap(conv1, dim_capsule=8, n_channels=32, kernel_size=9, strides=2, padding='valid')
+    primarycaps = PrimaryCap(conv1, dim_capsule=8, n_channels=32, kernel_size=16, strides=3, padding='valid')
 
     # Layer 3: Capsule layer. Routing algorithm works here.
     digitcaps = CapsuleLayer(num_capsule=n_class, dim_capsule=capsule_size, routings=routings,
@@ -173,11 +175,11 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
     def res_decoder():
         dcaps = layers.Input((n_class, capsule_size))
         # pcaps = layers.Input((100352, 8))
-        conv = layers.Input((120, 120, 256))
+        conv = layers.Input((112, 112, 256))
 
         y = layers.Reshape((1, 1, n_class*capsule_size))(dcaps)
 
-        y = Conv2DTranspose(32, 2)(y)
+        y = Conv2DTranspose(32, 7)(y)
         # y = BatchNormalization()(y)
         # y = Activation('relu')(y)
 
@@ -187,54 +189,66 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
 
         y = identity_block(y, 3, 64, '2', '1')
         y = identity_block(y, 3, 64, '2', '2')
-        y = identity_block(y, 3, 64, '2', '3')
+        # y = identity_block(y, 3, 64, '2', '3')
         y = conv_block(y, 3, 128, '2', '4')
 
         y = identity_block(y, 3, 128, '3', '1')
         y = identity_block(y, 3, 128, '3', '2')
-        y = identity_block(y, 3, 128, '3', '3')
-        y = identity_block(y, 3, 128, '3', '4')
-        y = identity_block(y, 3, 128, '3', '5')
+        # y = identity_block(y, 3, 128, '3', '3')
+        # y = identity_block(y, 3, 128, '3', '4')
+        # y = identity_block(y, 3, 128, '3', '5')
         y = conv_block(y, 3, 256, '3', '6')
 
         y = identity_block(y, 3, 256, '4', '1')
         y = identity_block(y, 3, 256, '4', '2')
-        y = identity_block(y, 3, 256, '4', '3')
-        y = conv_block(y, 3, 512, '4', '4')
+        # y = identity_block(y, 3, 256, '4', '3')
+        y = conv_block(y, 3, 256, '4', '4')
+
+        y = layers.concatenate([y, conv])
 
         y = identity_block(y, 3, 512, '5', '1')
         y = identity_block(y, 3, 512, '5', '2')
         y = identity_block(y, 3, 512, '5', '3')
-        y = conv_block(y, 3, 512, '5', '4')
 
-        y = identity_block(y, 3, 512, '6', '1')
-        y = identity_block(y, 3, 512, '6', '2')
-        y = identity_block(y, 3, 512, '6', '3')
-        y = conv_block(y, 3, 512, '6', '4')
+        y = conv_block(y, 3, 128, '5', '4', strides=1)
 
-        y = Conv2D(3, 1, padding='same')(y)
-        y = BatchNormalization()(y)
+        y = identity_block(y, 3, 128, '6', '2')
+        y = identity_block(y, 3, 128, '6', '3')
 
+        y = conv2d_transpose_bn(y, 3, 17, activation='sigmoid')
+        # y = identity_block(y, 3, 256, '6', '1')
+        # y = identity_block(y, 3, 256, '6', '2')
 
-        # y = Conv2DTranspose(128, 5)(y)
-        # y = BatchNormalization()(y)
-        # y = Activation('relu')(y)
+        # y = conv_block(y, 3, 512, '5', '4', strides=1)
         #
-        # y = Conv2DTranspose(256, 5)(y)
-        # y = BatchNormalization()(y)
-        # y = Activation('relu')(y)
-        #
-        # # y = layers.concatenate([y, conv])
-        #
-        # y = Conv2DTranspose(64, 5)(y)
-        # y = BatchNormalization()(y)
-        # y = Activation('relu')(y)
-        #
-        # y = Conv2DTranspose(3, 5)(y)
-        # y = BatchNormalization()(y)
+        # y = identity_block(y, 3, 512, '6', '1')
+        # y = identity_block(y, 3, 512, '6', '2')
+        # y = identity_block(y, 3, 512, '6', '3')
+        # y = conv_block(y, 3, 512, '6', '4', strides=1)
 
-
-        y = layers.Activation('sigmoid', name='out_recon')(y)
+        # y = Conv2DTranspose(3, 1, padding='same')(y)
+        # y = BatchNormalization()(y)
+        #
+        #
+        # # y = Conv2DTranspose(128, 5)(y)
+        # # y = BatchNormalization()(y)
+        # # y = Activation('relu')(y)
+        # #
+        # # y = Conv2DTranspose(256, 5)(y)
+        # # y = BatchNormalization()(y)
+        # # y = Activation('relu')(y)
+        # #
+        # # # y = layers.concatenate([y, conv])
+        # #
+        # # y = Conv2DTranspose(64, 5)(y)
+        # # y = BatchNormalization()(y)
+        # # y = Activation('relu')(y)
+        # #
+        # # y = Conv2DTranspose(3, 5)(y)
+        # # y = BatchNormalization()(y)
+        #
+        #
+        # y = layers.Activation('sigmoid', name='out_recon')(y)
 
         m = models.Model([conv, dcaps], y, name='decoder')
         m.summary()
@@ -322,7 +336,7 @@ def train(model, data, args):
     tb = callbacks.TensorBoard(log_dir=args.save_dir + '/tensorboard-logs',
                                batch_size=args.batch_size, histogram_freq=int(args.debug))
     checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/weights-{epoch:02d}.h5', monitor='decoder_loss_1',
-                                           save_best_only=True, save_weights_only=True, verbose=1)
+                                           save_best_only=False, save_weights_only=True, verbose=1)
     lr_decay = callbacks.LearningRateScheduler(schedule=lambda epoch: args.lr * (args.lr_decay ** epoch))
 
     # compile the model
@@ -471,7 +485,7 @@ if __name__ == "__main__":
     # define model
     model, eval_model, manipulate_model = CapsNet(input_shape=(128, 128, 3),
                                                   decoder_output_shape=(128, 128, 3),
-                                                  n_class=2,
+                                                  n_class=3,
                                                   routings=args.routings, capsule_size=16)
     model.summary()
 

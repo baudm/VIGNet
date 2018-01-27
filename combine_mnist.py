@@ -34,9 +34,9 @@ def get_label(f):
         label = 0
     elif '/bench/' in f:
         label = 1
-    # else:
-    #     label = 2
-    return to_categorical(label, 2)
+    else:
+        label = 2
+    return to_categorical(label, 3)
 
 
 def sample_and_combine(x_pool, y_pool, overlap_factor):
