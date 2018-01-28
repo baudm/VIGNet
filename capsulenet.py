@@ -308,6 +308,14 @@ def margin_loss(y_true, y_pred):
     return K.mean(K.sum(L, 1))
 
 
+from keras.losses import mean_squared_error
+from keras_contrib.losses import DSSIMObjective
+
+def image_loss(y_true, y_pred):
+    dssim = DSSIMObjective()
+    return dssim(y_true, y_pred) + mean_squared_error(y_true, y_pred)
+
+
 def data_generator(x_data, y_data, batch_size, overlap, test=False):
     while True:
         data = [sample_and_combine(x_data, y_data, overlap) for i in range(batch_size)]
@@ -341,7 +349,7 @@ def train(model, data, args):
 
     # compile the model
     model.compile(optimizer=optimizers.Adam(lr=args.lr),
-                  loss=[margin_loss, 'mse', 'mse'],
+                  loss=[margin_loss, image_loss, image_loss],
                   loss_weights=[1., args.lam_recon, args.lam_recon],
                   metrics={'capsnet': k_categorical_accuracy})
 
@@ -384,6 +392,7 @@ def test_multi(model, data, args):
     x_test, y_test = data
     x1, x2, x, y1, y2, y = sample_and_combine(x_test, y_test, overlap_factor=args.overlap)
     y_pred, x_recon1, x_recon2 = model.predict_on_batch(x[np.newaxis])
+    print(y, y_pred)
     x_recon1 = x_recon1
     x_recon2 = x_recon2
     fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
