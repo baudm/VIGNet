@@ -215,7 +215,7 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
         y = identity_block(y, 3, 128, '6', '2')
         y = identity_block(y, 3, 128, '6', '3')
 
-        y = conv2d_transpose_bn(y, 3, 17, activation='sigmoid')
+        y = conv2d_transpose_bn(y, 4, 17, activation='tanh')
         # y = identity_block(y, 3, 256, '6', '1')
         # y = identity_block(y, 3, 256, '6', '2')
 
@@ -281,7 +281,7 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
 
     # Models for training and evaluation (prediction)
     train_model = models.Model([x, y1, y2], [out_caps, decoder([conv1, masked_by_y1]), decoder([conv1, masked_by_y2])])
-    eval_model = models.Model(x, [out_caps, decoder([conv1, masked1]), decoder([conv1, masked2])])
+    eval_model = models.Model([x, y1, y2], [out_caps, decoder([conv1, masked_by_y1]), decoder([conv1, masked_by_y2])])
     plot_model(train_model, show_shapes=True)
 
     # return None
@@ -360,7 +360,7 @@ def train(model, data, args):
                         initial_epoch=args.initial_epoch,
                         # validation_data=buf(data_generator(x_test, y_test, args.batch_size, args.overlap), 3),
                         # validation_steps=500,
-                        callbacks=[log, tb, checkpoint, lr_decay])
+                        callbacks=[log, tb, checkpoint])#, lr_decay])
     # End: Training with data augmentation -----------------------------------------------------------------------#
 
     model.save_weights(args.save_dir + '/trained_model.h5')
@@ -388,13 +388,54 @@ def test(model, data, args):
     plt.show()
 
 
+
+
+def jaccard_distance(y_true, y_pred, smooth=100):
+    """Jaccard distance for semantic segmentation, also known as the intersection-over-union loss.
+
+    This loss is useful when you have unbalanced numbers of pixels within an image
+    because it gives all classes equal weight. However, it is not the defacto
+    standard for image segmentation.
+
+    For example, assume you are trying to predict if each pixel is cat, dog, or background.
+    You have 80% background pixels, 10% dog, and 10% cat. If the model predicts 100% background
+    should it be be 80% right (as with categorical cross entropy) or 30% (with this loss)?
+
+    The loss has been modified to have a smooth gradient as it converges on zero.
+    This has been shifted so it converges on 0 and is smoothed to avoid exploding
+    or disappearing gradient.
+
+    Jaccard = (|X & Y|)/ (|X|+ |Y| - |X & Y|)
+            = sum(|A*B|)/(sum(|A|)+sum(|B|)-sum(|A*B|))
+
+    # References
+
+    Csurka, Gabriela & Larlus, Diane & Perronnin, Florent. (2013).
+    What is a good evaluation measure for semantic segmentation?.
+    IEEE Trans. Pattern Anal. Mach. Intell.. 26. . 10.5244/C.27.32.
+
+    https://en.wikipedia.org/wiki/Jaccard_index
+
+    """
+    intersection = np.sum(np.abs(y_true * y_pred), axis=-1)
+    sum_ = np.sum(np.abs(y_true) + np.abs(y_pred), axis=-1)
+    jac = (intersection + smooth) / (sum_ - intersection + smooth)
+    return (1 - jac) * smooth
+
+
 def test_multi(model, data, args):
     x_test, y_test = data
     x1, x2, x, y1, y2, y = sample_and_combine(x_test, y_test, overlap_factor=args.overlap)
-    y_pred, x_recon1, x_recon2 = model.predict_on_batch(x[np.newaxis])
-    print(y, y_pred)
-    x_recon1 = x_recon1
-    x_recon2 = x_recon2
+    y_pred, x_recon1, x_recon2 = model.predict_on_batch([x[np.newaxis], y1[np.newaxis], y2[np.newaxis]])
+    print(y, y_pred, y1, y2)
+    x1 = (x1 + 1.) / 2.
+    x2 = (x2 + 1.) / 2.
+    x = (x + 1.) / 2.
+    x_recon1 = (x_recon1 + 1.) / 2.
+    x_recon2 = (x_recon2 + 1.) / 2.
+    a = jaccard_distance(x1, x_recon1).sum()
+    b = jaccard_distance(x2, x_recon2).sum()
+    print(a,b)
     fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
     ax[0][0].imshow(x1.squeeze())
     ax[0][1].imshow(x2.squeeze())
@@ -492,9 +533,9 @@ if __name__ == "__main__":
     # x_out_sample = sample_outputs[1]
 
     # define model
-    model, eval_model, manipulate_model = CapsNet(input_shape=(128, 128, 3),
-                                                  decoder_output_shape=(128, 128, 3),
-                                                  n_class=3,
+    model, eval_model, manipulate_model = CapsNet(input_shape=(128, 128, 4),
+                                                  decoder_output_shape=(128, 128, 4),
+                                                  n_class=2,
                                                   routings=args.routings, capsule_size=16)
     model.summary()
 
