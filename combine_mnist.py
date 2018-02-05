@@ -69,6 +69,10 @@ def sample_and_combine(x_pool, y_pool, overlap_factor, FILES=TEST_FILES):
     # y1 = get_label(FILES[first])
     # x2 = imread(FILES[second])
     # y2 = get_label(FILES[second])
+
+    # a = '/home/darwin/Projects/datasets/shapenet/render/screenshots/test/motorcycle/b767982d38b5171e429f1c522640e6f0-7_-0.3715715_1.1131217_1.3595791.png'
+    # b = '/home/darwin/Projects/datasets/shapenet/render/screenshots/test/car/501ac8493044eff04d44f5db04bf14b8-44_-0.14040226_1.6006266_1.3633044.png'
+
     #
     # print(FILES[first], FILES[second])
 

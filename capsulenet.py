@@ -281,11 +281,12 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
 
     def make_pose_estimator():
         masked_dcaps = layers.Input((n_class, capsule_size))
-        pose = layers.Dense(512, activation='relu')(masked_dcaps)
+        pose = layers.Flatten()(masked_dcaps)
+        pose = layers.Dense(512, activation='relu')(pose)
         pose = layers.Dense(1024, activation='relu')(pose)
         pose = layers.Dense(3, activation='sigmoid', name='prepose')(pose)
         pose = layers.Reshape(target_shape=(3,), name='pose')(pose)
-        m = models.Model(masked_dcaps, pose, name='pose_estimator')
+        m = models.Model(masked_dcaps, pose, name='pose')
         return m
 
     pose_estimator = make_pose_estimator()
@@ -454,9 +455,13 @@ def test_multi(model, data, args):
     x = (x + 1.) / 2.
     x_recon1 = (x_recon1 + 1.) / 2.
     x_recon2 = (x_recon2 + 1.) / 2.
+    x_recon1 = np.maximum(0., x_recon1)
+    x_recon2 = np.maximum(0., x_recon2)
+    x_recon1 = np.minimum(1., x_recon1)
+    x_recon2 = np.minimum(1., x_recon2)
     a = jaccard_distance(x1, x_recon1).sum()
     b = jaccard_distance(x2, x_recon2).sum()
-    print(a,b)
+    print(x1,x2,x,x_recon1,x_recon2)
     fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
     ax[0][0].imshow(x1.squeeze())
     ax[0][1].imshow(x2.squeeze())
@@ -464,11 +469,12 @@ def test_multi(model, data, args):
     ax[1][0].imshow(x_recon1[0].squeeze())
     ax[1][1].imshow(x_recon2[0].squeeze())
     plt.show()
+    # dssim = DSSIMObjective()
     # model.compile(optimizer=optimizers.Adam(lr=args.lr),
-    #                    loss=[margin_loss, 'mse', 'mse'],
+    #                    loss=[margin_loss, 'mse', dssim],
     #                    loss_weights=[1., args.lam_recon, args.lam_recon],
     #                    metrics={'capsnet': k_categorical_accuracy})
-    # e = model.evaluate_generator(buf(data_generator(x_test, y_test, 10, args.overlap, True), 3), steps=500)
+    # e = model.evaluate_generator(buf(data_generator(x_test, y_test, 10, args.overlap), 3), steps=500)
     # print(model.metrics_names, e)
 
 
