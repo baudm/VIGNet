@@ -327,6 +327,14 @@ def image_loss(y_true, y_pred):
     return dssim(y_true, y_pred) + mean_squared_error(y_true, y_pred)
 
 
+def preprocess_pose(pose):
+    pose[:, 0] = (pose[:, 0] + (np.pi / 6.)) * 3. / np.pi
+    # azimuth from 0 to 360deg
+    pose[:, 1] = pose[:, 1] / (2. * np.pi)
+    # distance factor from 1.0 to sqrt(2.0)
+    pose[:, 2] = (pose[:, 2] - 1.) / (np.sqrt(2.) - 1.)
+
+
 def data_generator(x_data, y_data, batch_size, overlap, test=False):
     while True:
         data = [sample_and_combine(x_data, y_data, overlap) for i in range(batch_size)]
@@ -335,6 +343,8 @@ def data_generator(x_data, y_data, batch_size, overlap, test=False):
         # Stack
         data = list(map(np.stack, data))
         x1, x2, x, y1, y2, y, pose1, pose2 = data
+        preprocess_pose(pose1)
+        preprocess_pose(pose2)
         inputs = x if test else [x, y1, y2]
         yield inputs, [y, x1, x2, pose1, pose2]
 
