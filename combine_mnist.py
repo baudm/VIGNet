@@ -30,23 +30,23 @@ from keras.utils import to_categorical
 FILES = glob.glob(os.path.join('/home/darwin/Projects/datasets/shapenet/render/screenshots/modelsByCategory', '**/*.png'), recursive=True)
 TEST_FILES = glob.glob(os.path.join('/home/darwin/Projects/datasets/shapenet/render/screenshots/test', '**/*.png'), recursive=True)
 
-# a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/car.train.npz')
-# CAR_TRAIN_IMG = a['images']
-# CAR_TRAIN_LABELS = a['labels']
+a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/car.train.npz')
+CAR_TRAIN_IMG = a['images']
+CAR_TRAIN_LABELS = a['labels']
 #
 # a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/car.test.npz')
 # CAR_TEST_IMG = a['images']
 # CAR_TEST_LABELS = a['labels']
 #
-# a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/motorcycle.train.npz')
-# MOTOR_TRAIN_IMG = a['images']
-# MOTOR_TRAIN_LABELS = a['labels']
+a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/motorcycle.train.npz')
+MOTOR_TRAIN_IMG = a['images']
+MOTOR_TRAIN_LABELS = a['labels']
 
 # a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/motorcycle.test.npz')
 # MOTOR_TEST_IMG = a['images']
 # MOTOR_TEST_LABELS = a['labels']
 
-# N = len(CAR_TRAIN_LABELS)
+N = len(CAR_TRAIN_LABELS)
 
 
 
@@ -61,31 +61,38 @@ def get_label(f):
 
 
 def sample_and_combine(x_pool, y_pool, overlap_factor, FILES=TEST_FILES):
-    n = len(FILES)
-    first = second = np.random.randint(n)
-    while np.array_equal(get_label(FILES[second]), get_label(FILES[first])):
-        second = np.random.randint(n)
-    x1 = imread(FILES[first])
-    y1 = get_label(FILES[first])
-    x2 = imread(FILES[second])
-    y2 = get_label(FILES[second])
-
-    print(FILES[first], FILES[second])
-
-    # x1 = CAR_TRAIN_IMG[np.random.randint(N)]
-    # y1 = np.array([1, 0])
+    # n = len(FILES)
+    # first = second = np.random.randint(n)
+    # while np.array_equal(get_label(FILES[second]), get_label(FILES[first])):
+    #     second = np.random.randint(n)
+    # x1 = imread(FILES[first])
+    # y1 = get_label(FILES[first])
+    # x2 = imread(FILES[second])
+    # y2 = get_label(FILES[second])
     #
-    # x2 = MOTOR_TRAIN_IMG[np.random.randint(N)]
-    # y2 = np.array([0, 1])
-    #
-    # # Swap 50% of the time
-    # if np.random.choice(2):
-    #     xt = x1
-    #     yt = y1
-    #     x1 = x2
-    #     y1 = y2
-    #     x2 = xt
-    #     y2 = yt
+    # print(FILES[first], FILES[second])
+
+    n = np.random.randint(N)
+    x1 = CAR_TRAIN_IMG[n]
+    pose1 = CAR_TRAIN_LABELS[n]
+    y1 = np.array([1, 0])
+
+    n = np.random.randint(N)
+    x2 = MOTOR_TRAIN_IMG[n]
+    pose2 = MOTOR_TRAIN_LABELS[n]
+    y2 = np.array([0, 1])
+
+    # Swap 50% of the time
+    if np.random.choice(2):
+        xt = x1
+        yt = y1
+        poset = pose1
+        x1 = x2
+        y1 = y2
+        pose1 = pose2
+        x2 = xt
+        y2 = yt
+        pose2 = poset
 
 
     h, w, d = x1.shape
@@ -160,7 +167,7 @@ def sample_and_combine(x_pool, y_pool, overlap_factor, FILES=TEST_FILES):
     x2 = x2 / 127.5 - 1.
     combined = combined / 127.5 - 1.
 
-    return x1, x2, combined, y1, y2, y
+    return x1, x2, combined, y1, y2, y, pose1, pose2
 
 
 def main():

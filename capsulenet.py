@@ -251,8 +251,8 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
         # y = layers.Activation('sigmoid', name='out_recon')(y)
 
         m = models.Model([conv, dcaps], y, name='decoder')
-        m.summary()
-        plot_model(m, show_shapes=True, to_file='decoder.png')
+        # m.summary()
+        # plot_model(m, show_shapes=True, to_file='decoder.png')
         return m
 
 
@@ -279,9 +279,20 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
     # Shared Decoder model in training and prediction
     decoder = res_decoder()
 
+    def make_pose_estimator():
+        masked_dcaps = layers.Input((n_class, capsule_size))
+        pose = layers.Dense(512, activation='relu')(masked_dcaps)
+        pose = layers.Dense(1024, activation='relu')(pose)
+        pose = layers.Dense(3, activation='sigmoid', name='prepose')(pose)
+        pose = layers.Reshape(target_shape=(3,), name='pose')(pose)
+        m = models.Model(masked_dcaps, pose, name='pose_estimator')
+        return m
+
+    pose_estimator = make_pose_estimator()
+
     # Models for training and evaluation (prediction)
-    train_model = models.Model([x, y1, y2], [out_caps, decoder([conv1, masked_by_y1]), decoder([conv1, masked_by_y2])])
-    eval_model = models.Model([x, y1, y2], [out_caps, decoder([conv1, masked_by_y1]), decoder([conv1, masked_by_y2])])
+    train_model = models.Model([x, y1, y2], [out_caps, decoder([conv1, masked_by_y1]), decoder([conv1, masked_by_y2]), pose_estimator(masked_by_y1), pose_estimator(masked_by_y2)])
+    eval_model = models.Model([x, y1, y2], [out_caps, decoder([conv1, masked_by_y1]), decoder([conv1, masked_by_y2]), pose_estimator(masked_by_y1), pose_estimator(masked_by_y2)])
     plot_model(train_model, show_shapes=True)
 
     # return None
@@ -323,9 +334,9 @@ def data_generator(x_data, y_data, batch_size, overlap, test=False):
         data = zip(*data)
         # Stack
         data = list(map(np.stack, data))
-        x1, x2, x, y1, y2, y = data
+        x1, x2, x, y1, y2, y, pose1, pose2 = data
         inputs = x if test else [x, y1, y2]
-        yield inputs, [y, x1, x2]
+        yield inputs, [y, x1, x2, pose1, pose2]
 
 
 def train(model, data, args):
@@ -349,8 +360,8 @@ def train(model, data, args):
 
     # compile the model
     model.compile(optimizer=optimizers.Adam(lr=args.lr),
-                  loss=[margin_loss, image_loss, image_loss],
-                  loss_weights=[1., args.lam_recon, args.lam_recon],
+                  loss=[margin_loss, image_loss, image_loss, 'mse', 'mse'],
+                  # loss_weights=[1., args.lam_recon, args.lam_recon],
                   metrics={'capsnet': k_categorical_accuracy})
 
     # Training with data augmentation. If shift_fraction=0., also no augmentation.
