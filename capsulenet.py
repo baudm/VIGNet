@@ -334,6 +334,7 @@ def preprocess_pose(pose):
     pose[:, 1] = pose[:, 1] / (2. * np.pi)
     # distance factor from 1.0 to sqrt(2.0)
     pose[:, 2] = (pose[:, 2] - 1.) / (np.sqrt(2.) - 1.)
+    return pose
 
 
 def data_generator(x_data, y_data, batch_size, overlap, test=False):
@@ -344,8 +345,8 @@ def data_generator(x_data, y_data, batch_size, overlap, test=False):
         # Stack
         data = list(map(np.stack, data))
         x1, x2, x, y1, y2, y, pose1, pose2 = data
-        preprocess_pose(pose1)
-        preprocess_pose(pose2)
+        pose1 = preprocess_pose(pose1)
+        pose2 = preprocess_pose(pose2)
         inputs = x if test else [x, y1, y2]
         yield inputs, [y, x1, x2, pose1, pose2]
 
@@ -372,8 +373,8 @@ def train(model, data, args):
     # compile the model
     model.compile(optimizer=optimizers.Adam(lr=args.lr),
                   loss=[margin_loss, image_loss, image_loss, 'mse', 'mse'],
-                  # loss_weights=[1., args.lam_recon, args.lam_recon],
-                  metrics={'capsnet': k_categorical_accuracy})
+                  loss_weights=[0.1, 0.1, 0.1, 1., 1.],
+                  )
 
     # Training with data augmentation. If shift_fraction=0., also no augmentation.
     model.fit_generator(generator=buf(data_generator(x_train, y_train, args.batch_size, args.overlap), 3),
@@ -445,23 +446,25 @@ def jaccard_distance(y_true, y_pred, smooth=100):
     return (1 - jac) * smooth
 
 
+def denormalize_image(x):
+    x = (x + 1.) / 2.
+    x = np.maximum(0., x)
+    x = np.minimum(1., x)
+    return x
+
+
 def test_multi(model, data, args):
     x_test, y_test = data
-    x1, x2, x, y1, y2, y = sample_and_combine(x_test, y_test, overlap_factor=args.overlap)
-    y_pred, x_recon1, x_recon2 = model.predict_on_batch([x[np.newaxis], y1[np.newaxis], y2[np.newaxis]])
+    x1, x2, x, y1, y2, y, pose1, pose2 = sample_and_combine(x_test, y_test, overlap_factor=args.overlap)
+    y_pred, x_recon1, x_recon2, pose1_p, pose2_p = model.predict_on_batch([x[np.newaxis], y1[np.newaxis], y2[np.newaxis]])
     print(y, y_pred, y1, y2)
-    x1 = (x1 + 1.) / 2.
-    x2 = (x2 + 1.) / 2.
-    x = (x + 1.) / 2.
-    x_recon1 = (x_recon1 + 1.) / 2.
-    x_recon2 = (x_recon2 + 1.) / 2.
-    x_recon1 = np.maximum(0., x_recon1)
-    x_recon2 = np.maximum(0., x_recon2)
-    x_recon1 = np.minimum(1., x_recon1)
-    x_recon2 = np.minimum(1., x_recon2)
-    a = jaccard_distance(x1, x_recon1).sum()
-    b = jaccard_distance(x2, x_recon2).sum()
+    x1 = denormalize_image(x1)
+    x2 = denormalize_image(x2)
+    x = denormalize_image(x)
+    x_recon1 = denormalize_image(x_recon1)
+    x_recon2 = denormalize_image(x_recon2)
     print(x1,x2,x,x_recon1,x_recon2)
+    print(preprocess_pose(pose1[np.newaxis]), preprocess_pose(pose2[np.newaxis]), pose1_p, pose2_p)
     fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
     ax[0][0].imshow(x1.squeeze())
     ax[0][1].imshow(x2.squeeze())

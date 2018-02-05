@@ -33,21 +33,20 @@ TEST_FILES = glob.glob(os.path.join('/home/darwin/Projects/datasets/shapenet/ren
 a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/car.train.npz')
 CAR_TRAIN_IMG = a['images']
 CAR_TRAIN_LABELS = a['labels']
+
+a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/motorcycle.train.npz')
+MOTOR_TRAIN_IMG = a['images']
+MOTOR_TRAIN_LABELS = a['labels']
+
+N = len(CAR_TRAIN_LABELS)
 #
 # a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/car.test.npz')
 # CAR_TEST_IMG = a['images']
 # CAR_TEST_LABELS = a['labels']
 #
-a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/motorcycle.train.npz')
-MOTOR_TRAIN_IMG = a['images']
-MOTOR_TRAIN_LABELS = a['labels']
-
 # a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/motorcycle.test.npz')
 # MOTOR_TEST_IMG = a['images']
 # MOTOR_TEST_LABELS = a['labels']
-
-N = len(CAR_TRAIN_LABELS)
-
 
 
 def get_label(f):
@@ -59,6 +58,15 @@ def get_label(f):
     #     label = 2
     return to_categorical(label, 2)
 
+import os.path
+
+def get_pose(f):
+    f = os.path.basename(f)
+    n, e, a, d = f.split('_')
+    d = d.replace('.png', '')
+    pose = np.array(list(map(float, [e, a, d])))
+    return pose
+
 
 def sample_and_combine(x_pool, y_pool, overlap_factor, FILES=TEST_FILES):
     # n = len(FILES)
@@ -67,12 +75,14 @@ def sample_and_combine(x_pool, y_pool, overlap_factor, FILES=TEST_FILES):
     #     second = np.random.randint(n)
     # x1 = imread(FILES[first])
     # y1 = get_label(FILES[first])
+    # pose1 = get_pose(FILES[first])
     # x2 = imread(FILES[second])
     # y2 = get_label(FILES[second])
-
+    # pose2 = get_pose(FILES[second])
+    #
     # a = '/home/darwin/Projects/datasets/shapenet/render/screenshots/test/motorcycle/b767982d38b5171e429f1c522640e6f0-7_-0.3715715_1.1131217_1.3595791.png'
     # b = '/home/darwin/Projects/datasets/shapenet/render/screenshots/test/car/501ac8493044eff04d44f5db04bf14b8-44_-0.14040226_1.6006266_1.3633044.png'
-
+    #
     #
     # print(FILES[first], FILES[second])
 
