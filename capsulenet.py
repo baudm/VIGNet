@@ -86,16 +86,16 @@ def identity_block(input_tensor, kernel_size, filters, stage, block):
 
     x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(input_tensor)
     x = Activation('relu')(x)
-    x = Conv2DTranspose(filters_bottleneck, (1, 1), padding='same', name=conv_name_base + '2a')(x)
+    x = Conv2DTranspose(filters_bottleneck, (1, 1), padding='same', name=conv_name_base + '2a', kernel_initializer='he_uniform')(x)
 
     x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
     x = Activation('relu')(x)
-    x = Conv2DTranspose(filters_bottleneck, kernel_size,
+    x = Conv2DTranspose(filters_bottleneck, kernel_size,kernel_initializer='he_uniform',
                padding='same', name=conv_name_base + '2b')(x)
 
     x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
     x = Activation('relu')(x)
-    x = Conv2DTranspose(filters, (1, 1), padding='same', name=conv_name_base + '2c')(x)
+    x = Conv2DTranspose(filters, (1, 1), padding='same', name=conv_name_base + '2c', kernel_initializer='he_uniform')(x)
 
     x = layers.add([x, input_tensor])
     return x
@@ -129,20 +129,20 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2, 2))
     x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(input_tensor)
     x = Activation('relu')(x)
 
-    shortcut = Conv2DTranspose(filters, (1, 1), strides=strides, padding='same',
+    shortcut = Conv2DTranspose(filters, (1, 1), strides=strides, padding='same', kernel_initializer='he_uniform',
                       name=conv_name_base + '1')(x)
 
-    x = Conv2DTranspose(filters_bottleneck, (1, 1), strides=strides, padding='same',
+    x = Conv2DTranspose(filters_bottleneck, (1, 1), strides=strides, padding='same',kernel_initializer='he_uniform',
                name=conv_name_base + '2a')(x)
 
     x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
     x = Activation('relu')(x)
-    x = Conv2DTranspose(filters_bottleneck, kernel_size, padding='same',
+    x = Conv2DTranspose(filters_bottleneck, kernel_size, padding='same',kernel_initializer='he_uniform',
                name=conv_name_base + '2b')(x)
 
     x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
     x = Activation('relu')(x)
-    x = Conv2DTranspose(filters, (1, 1), padding='same', name=conv_name_base + '2c')(x)
+    x = Conv2DTranspose(filters, (1, 1), padding='same', name=conv_name_base + '2c', kernel_initializer='he_uniform')(x)
 
     x = layers.add([x, shortcut])
 
