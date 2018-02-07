@@ -31,22 +31,22 @@ FILES = glob.glob(os.path.join('/home/darwin/Projects/datasets/shapenet/render/s
 TEST_FILES = glob.glob(os.path.join('/home/darwin/Projects/datasets/shapenet/render/screenshots/test', '**/*.png'), recursive=True)
 
 a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/car.train.npz')
-CAR_TRAIN_IMG = a['images']
-CAR_TRAIN_LABELS = a['labels']
+CAR_IMG = a['images']
+CAR_LABELS = a['labels']
 
 a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/motorcycle.train.npz')
-MOTOR_TRAIN_IMG = a['images']
-MOTOR_TRAIN_LABELS = a['labels']
+MOTOR_IMG = a['images']
+MOTOR_LABELS = a['labels']
 
-N = len(CAR_TRAIN_LABELS)
-#
 # a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/car.test.npz')
-# CAR_TEST_IMG = a['images']
-# CAR_TEST_LABELS = a['labels']
+# CAR_IMG = a['images']
+# CAR_LABELS = a['labels']
 #
 # a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/motorcycle.test.npz')
-# MOTOR_TEST_IMG = a['images']
-# MOTOR_TEST_LABELS = a['labels']
+# MOTOR_IMG = a['images']
+# MOTOR_LABELS = a['labels']
+
+N = len(CAR_LABELS)
 
 
 def get_label(f):
@@ -87,13 +87,13 @@ def sample_and_combine(x_pool, y_pool, overlap_factor, FILES=TEST_FILES):
     # print(FILES[first], FILES[second])
 
     n = np.random.randint(N)
-    x1 = CAR_TRAIN_IMG[n]
-    pose1 = CAR_TRAIN_LABELS[n]
+    x1 = CAR_IMG[n]
+    pose1 = CAR_LABELS[n]
     y1 = np.array([1, 0])
 
     n = np.random.randint(N)
-    x2 = MOTOR_TRAIN_IMG[n]
-    pose2 = MOTOR_TRAIN_LABELS[n]
+    x2 = MOTOR_IMG[n]
+    pose2 = MOTOR_LABELS[n]
     y2 = np.array([0, 1])
 
     # Swap 50% of the time
