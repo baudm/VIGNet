@@ -34,7 +34,7 @@ from keras.utils.vis_utils import plot_model
 
 
 def conv2d_transpose_bn(x, filters, kernel_size, strides=(1, 1), padding='valid', activation='relu'):
-    x = layers.Conv2DTranspose(filters, kernel_size, strides=strides, padding=padding)(x)
+    x = layers.Conv2DTranspose(filters, kernel_size, strides=strides, padding=padding, kernel_initializer='he_uniform')(x)
     x = layers.BatchNormalization()(x)
     x = layers.Activation(activation)(x)
     return x
@@ -64,16 +64,16 @@ def identity_block(input_tensor, kernel_size, filters, stage, block):
 
     x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(input_tensor)
     x = layers.Activation('relu')(x)
-    x = layers.Conv2DTranspose(filters_bottleneck, (1, 1), padding='same', name=conv_name_base + '2a')(x)
+    x = layers.Conv2DTranspose(filters_bottleneck, (1, 1), padding='same', name=conv_name_base + '2a', kernel_initializer='he_uniform')(x)
 
     x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
     x = layers.Activation('relu')(x)
-    x = layers.Conv2DTranspose(filters_bottleneck, kernel_size,
+    x = layers.Conv2DTranspose(filters_bottleneck, kernel_size, kernel_initializer='he_uniform',
                padding='same', name=conv_name_base + '2b')(x)
 
     x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
     x = layers.Activation('relu')(x)
-    x = layers.Conv2DTranspose(filters, (1, 1), padding='same', name=conv_name_base + '2c')(x)
+    x = layers.Conv2DTranspose(filters, (1, 1), padding='same', name=conv_name_base + '2c', kernel_initializer='he_uniform')(x)
 
     x = layers.add([x, input_tensor])
     return x
@@ -107,20 +107,20 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2, 2))
     x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(input_tensor)
     x = layers.Activation('relu')(x)
 
-    shortcut = layers.Conv2DTranspose(filters, (1, 1), strides=strides, padding='same',
+    shortcut = layers.Conv2DTranspose(filters, (1, 1), strides=strides, padding='same', kernel_initializer='he_uniform',
                       name=conv_name_base + '1')(x)
 
-    x = layers.Conv2DTranspose(filters_bottleneck, (1, 1), strides=strides, padding='same',
+    x = layers.Conv2DTranspose(filters_bottleneck, (1, 1), strides=strides, padding='same', kernel_initializer='he_uniform',
                name=conv_name_base + '2a')(x)
 
     x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
     x = layers.Activation('relu')(x)
-    x = layers.Conv2DTranspose(filters_bottleneck, kernel_size, padding='same',
+    x = layers.Conv2DTranspose(filters_bottleneck, kernel_size, padding='same', kernel_initializer='he_uniform',
                name=conv_name_base + '2b')(x)
 
     x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
     x = layers.Activation('relu')(x)
-    x = layers.Conv2DTranspose(filters, (1, 1), padding='same', name=conv_name_base + '2c')(x)
+    x = layers.Conv2DTranspose(filters, (1, 1), padding='same', name=conv_name_base + '2c', kernel_initializer='he_uniform')(x)
 
     x = layers.add([x, shortcut])
 
@@ -139,7 +139,7 @@ def CapsNet(input_shape, n_class, routings, capsule_size=16):
     x = layers.Input(shape=input_shape, name='input_image')
 
     # Layer 1: Just a conventional Conv2D layer
-    conv1 = layers.Conv2D(filters=256, kernel_size=17, strides=1, padding='valid', name='conv1')(x)
+    conv1 = layers.Conv2D(filters=256, kernel_size=17, strides=1, padding='valid', name='conv1', kernel_initializer='he_uniform')(x)
     conv1 = layers.BatchNormalization()(conv1)
     conv1 = layers.Activation('relu')(conv1)
 
@@ -211,8 +211,8 @@ def CapsNet(input_shape, n_class, routings, capsule_size=16):
     def make_pose_estimator():
         masked_dcaps = layers.Input((n_class, capsule_size), name='masked_digitcaps')
         pose = layers.Flatten()(masked_dcaps)
-        pose = layers.Dense(512, activation='relu')(pose)
-        pose = layers.Dense(1024, activation='relu')(pose)
+        pose = layers.Dense(512, activation='relu', kernel_initializer='he_uniform')(pose)
+        pose = layers.Dense(1024, activation='relu', kernel_initializer='he_uniform')(pose)
         pose = layers.Dense(3, activation='sigmoid', name='pose')(pose)
         m = models.Model(masked_dcaps, pose, name='pose')
         plot_model(m, show_shapes=True, to_file='pose-estimator.png')
