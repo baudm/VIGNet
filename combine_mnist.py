@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-from keras.datasets import fashion_mnist as mnist
 import numpy as np
 
 # ave width:
@@ -184,29 +183,29 @@ def sample_and_combine(x_pool, y_pool, overlap_factor, FILES=TEST_FILES):
     return x1, x2, combined, y1, y2, y, pose1, pose2
 
 
-def main():
-    bb_w = [0 for i in range(10)]
-    bb_h = [0 for i in range(10)]
-    (x, y), (_, _) = mnist.load_data()
-    for i in range(len(x)):
-        x1 = x[i]
-        y1 = y[i]
-        left_x = ((x1 > 0).argmax(axis=0) > 0).argmax()
-        top_y = ((x1 > 0).argmax(axis=1) > 0).argmax()
-        x1 = np.fliplr(x1)
-        x1 = np.flipud(x1)
-        right_x = 28 - ((x1 > 0).argmax(axis=0) > 0).argmax()
-        bottom_y = 28 - ((x1 > 0).argmax(axis=1) > 0).argmax()
-        w = right_x - left_x
-        h = bottom_y - top_y
-        bb_w[y1] += w
-        bb_h[y1] += h
-
-    for i in range(10):
-        bb_w[i] /= 6000.
-        bb_h[i] /= 6000.
-
-    return bb_w, bb_h
+# def main():
+#     bb_w = [0 for i in range(10)]
+#     bb_h = [0 for i in range(10)]
+#     (x, y), (_, _) = mnist.load_data()
+#     for i in range(len(x)):
+#         x1 = x[i]
+#         y1 = y[i]
+#         left_x = ((x1 > 0).argmax(axis=0) > 0).argmax()
+#         top_y = ((x1 > 0).argmax(axis=1) > 0).argmax()
+#         x1 = np.fliplr(x1)
+#         x1 = np.flipud(x1)
+#         right_x = 28 - ((x1 > 0).argmax(axis=0) > 0).argmax()
+#         bottom_y = 28 - ((x1 > 0).argmax(axis=1) > 0).argmax()
+#         w = right_x - left_x
+#         h = bottom_y - top_y
+#         bb_w[y1] += w
+#         bb_h[y1] += h
+#
+#     for i in range(10):
+#         bb_w[i] /= 6000.
+#         bb_h[i] /= 6000.
+#
+#     return bb_w, bb_h
 
 import glob
 from skimage.io import imread

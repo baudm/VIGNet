@@ -19,11 +19,12 @@ Author: Xifeng Guo, E-mail: `guoxifeng1990@163.com`, Github: `https://github.com
 import numpy as np
 from keras import layers, models, optimizers
 from keras import backend as K
-from keras.utils import to_categorical
+from keras.losses import mean_squared_error
+from keras_contrib.losses import DSSIMObjective
 import matplotlib.pyplot as plt
 from utils import combine_images
 from PIL import Image
-from capsulelayers import CapsuleLayer, PrimaryCap, Length, Mask, k_categorical_accuracy
+from capsulelayers import CapsuleLayer, PrimaryCap, Mask
 from combine_mnist import sample_and_combine
 from buffering import buffered_gen_threaded as buf
 
@@ -32,34 +33,11 @@ K.set_image_data_format('channels_last')
 from keras.utils.vis_utils import plot_model
 
 
-def conv2d_bn(x, filters, kernel_size, strides=(1, 1), padding='valid', activation='relu'):
-    x = layers.Conv2D(filters, kernel_size, strides=strides, padding=padding)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation(activation)(x)
-    return x
-
-
 def conv2d_transpose_bn(x, filters, kernel_size, strides=(1, 1), padding='valid', activation='relu'):
     x = layers.Conv2DTranspose(filters, kernel_size, strides=strides, padding=padding)(x)
     x = layers.BatchNormalization()(x)
     x = layers.Activation(activation)(x)
     return x
-
-
-def res_conv2d_transpose_bn(x, filters, kernel_size, strides=(1, 1), padding='valid', activation='relu'):
-    # block 1
-    res = layers.BatchNormalization()(x)
-    res = layers.Activation(activation)(res)
-    res = layers.Conv2DTranspose(filters, kernel_size, strides=strides, padding=padding)(res)
-    # block 2
-    res = layers.BatchNormalization()(res)
-    res = layers.Activation(activation)(res)
-    res = layers.Conv2DTranspose(filters, kernel_size, strides=strides, padding=padding)(res)
-    return layers.add([x, res])
-
-
-
-from keras.layers import Conv2D, BatchNormalization, Activation, Conv2DTranspose
 
 
 def identity_block(input_tensor, kernel_size, filters, stage, block):
@@ -84,18 +62,18 @@ def identity_block(input_tensor, kernel_size, filters, stage, block):
 
     filters_bottleneck = filters // 4
 
-    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(input_tensor)
-    x = Activation('relu')(x)
-    x = Conv2DTranspose(filters_bottleneck, (1, 1), padding='same', name=conv_name_base + '2a', kernel_initializer='he_uniform')(x)
+    x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(input_tensor)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2DTranspose(filters_bottleneck, (1, 1), padding='same', name=conv_name_base + '2a')(x)
 
-    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
-    x = Activation('relu')(x)
-    x = Conv2DTranspose(filters_bottleneck, kernel_size,kernel_initializer='he_uniform',
+    x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2DTranspose(filters_bottleneck, kernel_size,
                padding='same', name=conv_name_base + '2b')(x)
 
-    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
-    x = Activation('relu')(x)
-    x = Conv2DTranspose(filters, (1, 1), padding='same', name=conv_name_base + '2c', kernel_initializer='he_uniform')(x)
+    x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2DTranspose(filters, (1, 1), padding='same', name=conv_name_base + '2c')(x)
 
     x = layers.add([x, input_tensor])
     return x
@@ -126,30 +104,30 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2, 2))
 
     filters_bottleneck = filters // 4
 
-    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(input_tensor)
-    x = Activation('relu')(x)
+    x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(input_tensor)
+    x = layers.Activation('relu')(x)
 
-    shortcut = Conv2DTranspose(filters, (1, 1), strides=strides, padding='same', kernel_initializer='he_uniform',
+    shortcut = layers.Conv2DTranspose(filters, (1, 1), strides=strides, padding='same',
                       name=conv_name_base + '1')(x)
 
-    x = Conv2DTranspose(filters_bottleneck, (1, 1), strides=strides, padding='same',kernel_initializer='he_uniform',
+    x = layers.Conv2DTranspose(filters_bottleneck, (1, 1), strides=strides, padding='same',
                name=conv_name_base + '2a')(x)
 
-    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
-    x = Activation('relu')(x)
-    x = Conv2DTranspose(filters_bottleneck, kernel_size, padding='same',kernel_initializer='he_uniform',
+    x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2DTranspose(filters_bottleneck, kernel_size, padding='same',
                name=conv_name_base + '2b')(x)
 
-    x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
-    x = Activation('relu')(x)
-    x = Conv2DTranspose(filters, (1, 1), padding='same', name=conv_name_base + '2c', kernel_initializer='he_uniform')(x)
+    x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2DTranspose(filters, (1, 1), padding='same', name=conv_name_base + '2c')(x)
 
     x = layers.add([x, shortcut])
 
     return x
 
 
-def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=16):
+def CapsNet(input_shape, n_class, routings, capsule_size=16):
     """
     A Capsule Network on MNIST.
     :param input_shape: data shape, 3d, [width, height, channels]
@@ -158,7 +136,7 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
     :return: Two Keras Models, the first one used for training, and the second one for evaluation.
             `eval_model` can also be used for training.
     """
-    x = layers.Input(shape=input_shape)
+    x = layers.Input(shape=input_shape, name='input_image')
 
     # Layer 1: Just a conventional Conv2D layer
     conv1 = layers.Conv2D(filters=256, kernel_size=17, strides=1, padding='valid', name='conv1')(x)
@@ -173,15 +151,13 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
                              name='digitcaps')(primarycaps)
 
     def res_decoder():
-        dcaps = layers.Input((n_class, capsule_size))
+        dcaps = layers.Input((n_class, capsule_size), name='masked_digitcaps')
         # pcaps = layers.Input((100352, 8))
         conv = layers.Input((112, 112, 256))
 
         y = layers.Reshape((1, 1, n_class*capsule_size))(dcaps)
 
-        y = Conv2DTranspose(32, 7)(y)
-        # y = BatchNormalization()(y)
-        # y = Activation('relu')(y)
+        y = layers.Conv2DTranspose(32, 7)(y)
 
         y = identity_block(y, 3, 32, '1', '1')
         y = identity_block(y, 3, 32, '1', '2')
@@ -189,19 +165,14 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
 
         y = identity_block(y, 3, 64, '2', '1')
         y = identity_block(y, 3, 64, '2', '2')
-        # y = identity_block(y, 3, 64, '2', '3')
         y = conv_block(y, 3, 128, '2', '4')
 
         y = identity_block(y, 3, 128, '3', '1')
         y = identity_block(y, 3, 128, '3', '2')
-        # y = identity_block(y, 3, 128, '3', '3')
-        # y = identity_block(y, 3, 128, '3', '4')
-        # y = identity_block(y, 3, 128, '3', '5')
         y = conv_block(y, 3, 256, '3', '6')
 
         y = identity_block(y, 3, 256, '4', '1')
         y = identity_block(y, 3, 256, '4', '2')
-        # y = identity_block(y, 3, 256, '4', '3')
         y = conv_block(y, 3, 256, '4', '4')
 
         y = layers.concatenate([y, conv])
@@ -216,77 +187,35 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
         y = identity_block(y, 3, 128, '6', '3')
 
         y = conv2d_transpose_bn(y, 4, 17, activation='tanh')
-        # y = identity_block(y, 3, 256, '6', '1')
-        # y = identity_block(y, 3, 256, '6', '2')
-
-        # y = conv_block(y, 3, 512, '5', '4', strides=1)
-        #
-        # y = identity_block(y, 3, 512, '6', '1')
-        # y = identity_block(y, 3, 512, '6', '2')
-        # y = identity_block(y, 3, 512, '6', '3')
-        # y = conv_block(y, 3, 512, '6', '4', strides=1)
-
-        # y = Conv2DTranspose(3, 1, padding='same')(y)
-        # y = BatchNormalization()(y)
-        #
-        #
-        # # y = Conv2DTranspose(128, 5)(y)
-        # # y = BatchNormalization()(y)
-        # # y = Activation('relu')(y)
-        # #
-        # # y = Conv2DTranspose(256, 5)(y)
-        # # y = BatchNormalization()(y)
-        # # y = Activation('relu')(y)
-        # #
-        # # # y = layers.concatenate([y, conv])
-        # #
-        # # y = Conv2DTranspose(64, 5)(y)
-        # # y = BatchNormalization()(y)
-        # # y = Activation('relu')(y)
-        # #
-        # # y = Conv2DTranspose(3, 5)(y)
-        # # y = BatchNormalization()(y)
-        #
-        #
-        # y = layers.Activation('sigmoid', name='out_recon')(y)
 
         m = models.Model([conv, dcaps], y, name='decoder')
         # m.summary()
-        # plot_model(m, show_shapes=True, to_file='decoder.png')
+        plot_model(m, show_shapes=True, to_file='decoder.png')
         return m
-
-
-    #
-    # m = models.Model(x, y)
-    # m.summary()
-    # plot_model(m, show_shapes=True)
-    # return
 
     # Layer 4: This is an auxiliary layer to replace each capsule with its length. Just to match the true label's shape.
     # If using tensorflow, this will not be necessary. :)
-    out_caps = Length(name='capsnet')(digitcaps)
+    # out_caps = Length(name='capsnet')(digitcaps)
 
     # Decoder network.
-    y1 = layers.Input(shape=(n_class,))
-    y2 = layers.Input(shape=(n_class,))
-    masked_by_y1 = Mask()([digitcaps, y1])  # The true label is used to mask the output of capsule layer. For training
-    masked_by_y2 = Mask()([digitcaps, y2])  # The true label is used to mask the output of capsule layer. For training
-    masked1 = Mask(1)(digitcaps) # Mask using the capsule with maximal length. For prediction
-    masked2 = Mask(2)(digitcaps)  # Mask using the capsule with maximal length. For prediction
-
-
+    y1 = layers.Input(shape=(n_class,), name='input_label_1')
+    y2 = layers.Input(shape=(n_class,), name='input_label_2')
+    masked_by_y1 = Mask()([digitcaps, y1], name='masked_digitcap_1')  # The true label is used to mask the output of capsule layer. For training
+    masked_by_y2 = Mask()([digitcaps, y2], name='masked_digitcap_2')  # The true label is used to mask the output of capsule layer. For training
+    # masked1 = Mask(1)(digitcaps) # Mask using the capsule with maximal length. For prediction
+    # masked2 = Mask(2)(digitcaps)  # Mask using the capsule with maximal length. For prediction
 
     # Shared Decoder model in training and prediction
     decoder = res_decoder()
 
     def make_pose_estimator():
-        masked_dcaps = layers.Input((n_class, capsule_size))
+        masked_dcaps = layers.Input((n_class, capsule_size), name='masked_digitcaps')
         pose = layers.Flatten()(masked_dcaps)
         pose = layers.Dense(512, activation='relu')(pose)
         pose = layers.Dense(1024, activation='relu')(pose)
-        pose = layers.Dense(3, activation='sigmoid', name='prepose')(pose)
-        pose = layers.Reshape(target_shape=(3,), name='pose')(pose)
+        pose = layers.Dense(3, activation='sigmoid', name='pose')(pose)
         m = models.Model(masked_dcaps, pose, name='pose')
+        plot_model(m, show_shapes=True, to_file='pose-estimator.png')
         return m
 
     pose_estimator = make_pose_estimator()
@@ -296,15 +225,7 @@ def CapsNet(input_shape, decoder_output_shape, n_class, routings, capsule_size=1
     eval_model = models.Model([x, y1, y2], [decoder([conv1, masked_by_y1]), decoder([conv1, masked_by_y2]), pose_estimator(masked_by_y1), pose_estimator(masked_by_y2)])
     plot_model(train_model, show_shapes=True)
 
-    # return None
-
-    # manipulate model
-    manipulate_model = train_model
-    # noise = layers.Input(shape=(n_class, 16))
-    # noised_digitcaps = layers.Add()([digitcaps, noise])
-    # masked_noised_y = Mask()([noised_digitcaps, y1])
-    # manipulate_model = models.Model([x, y1, noise], decoder(masked_noised_y))
-    return train_model, eval_model, manipulate_model
+    return train_model, eval_model
 
 
 def margin_loss(y_true, y_pred):
@@ -319,9 +240,6 @@ def margin_loss(y_true, y_pred):
 
     return K.mean(K.sum(L, 1))
 
-
-from keras.losses import mean_squared_error
-from keras_contrib.losses import DSSIMObjective
 
 def image_loss(y_true, y_pred):
     dssim = DSSIMObjective()
@@ -351,17 +269,13 @@ def data_generator(x_data, y_data, batch_size, overlap, test=False):
         yield inputs, [x1, x2, pose1, pose2]
 
 
-def train(model, data, args):
+def train(model, args):
     """
     Training a CapsuleNet
     :param model: the CapsuleNet model
-    :param data: a tuple containing training and testing data, like `((x_train, y_train), (x_test, y_test))`
     :param args: arguments
     :return: The trained model
     """
-    # unpacking the data
-    (x_train, y_train), (x_test, y_test) = data
-
     # callbacks
     log = callbacks.CSVLogger(args.save_dir + '/log.csv')
     tb = callbacks.TensorBoard(log_dir=args.save_dir + '/tensorboard-logs',
@@ -377,7 +291,7 @@ def train(model, data, args):
                   )
 
     # Training with data augmentation. If shift_fraction=0., also no augmentation.
-    model.fit_generator(generator=buf(data_generator(x_train, y_train, args.batch_size, args.overlap), 3),
+    model.fit_generator(generator=buf(data_generator(None, None, args.batch_size, args.overlap), 3),
                         steps_per_epoch=1000,
                         epochs=args.epochs,
                         initial_epoch=args.initial_epoch,
@@ -411,41 +325,6 @@ def test(model, data, args):
     plt.show()
 
 
-
-
-def jaccard_distance(y_true, y_pred, smooth=100):
-    """Jaccard distance for semantic segmentation, also known as the intersection-over-union loss.
-
-    This loss is useful when you have unbalanced numbers of pixels within an image
-    because it gives all classes equal weight. However, it is not the defacto
-    standard for image segmentation.
-
-    For example, assume you are trying to predict if each pixel is cat, dog, or background.
-    You have 80% background pixels, 10% dog, and 10% cat. If the model predicts 100% background
-    should it be be 80% right (as with categorical cross entropy) or 30% (with this loss)?
-
-    The loss has been modified to have a smooth gradient as it converges on zero.
-    This has been shifted so it converges on 0 and is smoothed to avoid exploding
-    or disappearing gradient.
-
-    Jaccard = (|X & Y|)/ (|X|+ |Y| - |X & Y|)
-            = sum(|A*B|)/(sum(|A|)+sum(|B|)-sum(|A*B|))
-
-    # References
-
-    Csurka, Gabriela & Larlus, Diane & Perronnin, Florent. (2013).
-    What is a good evaluation measure for semantic segmentation?.
-    IEEE Trans. Pattern Anal. Mach. Intell.. 26. . 10.5244/C.27.32.
-
-    https://en.wikipedia.org/wiki/Jaccard_index
-
-    """
-    intersection = np.sum(np.abs(y_true * y_pred), axis=-1)
-    sum_ = np.sum(np.abs(y_true) + np.abs(y_pred), axis=-1)
-    jac = (intersection + smooth) / (sum_ - intersection + smooth)
-    return (1 - jac) * smooth
-
-
 def denormalize_image(x):
     x = (x + 1.) / 2.
     x = np.maximum(0., x)
@@ -453,9 +332,8 @@ def denormalize_image(x):
     return x
 
 
-def test_multi(model, data, args):
-    x_test, y_test = data
-    x1, x2, x, y1, y2, y, pose1, pose2 = sample_and_combine(x_test, y_test, overlap_factor=args.overlap)
+def test_multi(model, args):
+    x1, x2, x, y1, y2, y, pose1, pose2 = sample_and_combine(None, None, overlap_factor=args.overlap)
     x_recon1, x_recon2, pose1_p, pose2_p = model.predict_on_batch([x[np.newaxis], y1[np.newaxis], y2[np.newaxis]])
     x1 = denormalize_image(x1)
     x2 = denormalize_image(x2)
@@ -505,29 +383,16 @@ def manipulate_latent(model, data, args):
     print('-' * 30 + 'End: manipulate' + '-' * 30)
 
 
-def load_mnist():
-    # the data, shuffled and split between train and test sets
-    from keras.datasets import fashion_mnist as mnist
-    (x_train, y_train), (x_test, y_test) = mnist.load_data()
-
-    x_train = x_train.reshape(-1, 28, 28, 1).astype('float32') / 255.
-    x_test = x_test.reshape(-1, 28, 28, 1).astype('float32') / 255.
-    y_train = to_categorical(y_train.astype('float32'))
-    y_test = to_categorical(y_test.astype('float32'))
-    return (x_train, y_train), (x_test, y_test)
-
-
 if __name__ == "__main__":
     import os
     import argparse
-    from keras.preprocessing.image import ImageDataGenerator
     from keras import callbacks
 
     # setting the hyper parameters
     parser = argparse.ArgumentParser(description="Capsule Network on MNIST.")
-    parser.add_argument('--epochs', default=50, type=int)
+    parser.add_argument('--epochs', default=1000, type=int)
     parser.add_argument('--initial_epoch', default=0, type=int)
-    parser.add_argument('--batch_size', default=100, type=int)
+    parser.add_argument('--batch_size', default=6, type=int)
     parser.add_argument('--overlap', default=0.8, type=float)
     parser.add_argument('--lr', default=0.001, type=float,
                         help="Initial learning rate")
@@ -554,27 +419,18 @@ if __name__ == "__main__":
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
 
-    # load data
-    (x_train, y_train), (x_test, y_test) = load_mnist()
-    # sample_inputs, sample_outputs = next(data_generator(x_train, y_train, 1, args.overlap))
-    # x_sample = sample_inputs[0]
-    # y_sample = sample_inputs[1]
-    # x_out_sample = sample_outputs[1]
-
     # define model
-    model, eval_model, manipulate_model = CapsNet(input_shape=(128, 128, 4),
-                                                  decoder_output_shape=(128, 128, 4),
-                                                  n_class=2,
-                                                  routings=args.routings, capsule_size=16)
+    model, eval_model = CapsNet(input_shape=(128, 128, 4), n_class=2, routings=args.routings,
+                                                  capsule_size=16)
     model.summary()
 
     # train or test
     if args.weights is not None:  # init the model weights with provided one
         model.load_weights(args.weights)
     if not args.testing:
-        train(model=model, data=((x_train, y_train), (x_test, y_test)), args=args)
+        train(model=model, args=args)
     else:  # as long as weights are given, will run testing
         if args.weights is None:
             print('No weights are provided. Will test using random initialized weights.')
         #manipulate_latent(manipulate_model, (x_test, y_test), args)
-        test_multi(model=eval_model, data=(x_test, y_test), args=args)
+        test_multi(model=eval_model, args=args)
