@@ -213,7 +213,7 @@ def CapsNet(input_shape, n_class, routings, capsule_size=16):
         pose = layers.Flatten()(masked_dcaps)
         pose = layers.Dense(512, activation='relu', kernel_initializer='he_uniform')(pose)
         pose = layers.Dense(1024, activation='relu', kernel_initializer='he_uniform')(pose)
-        pose = layers.Dense(3, activation='sigmoid', name='pose')(pose)
+        pose = layers.Dense(3, activation='tanh', name='pose')(pose)
         m = models.Model(masked_dcaps, pose, name='pose')
         plot_model(m, show_shapes=True, to_file='pose-estimator.png')
         return m
@@ -247,11 +247,14 @@ def image_loss(y_true, y_pred):
 
 
 def preprocess_pose(pose):
-    pose[:, 0] = (pose[:, 0] + (np.pi / 6.)) * 3. / np.pi
+    # elevation from -30 to 30 deg
+    pose[:, 0] = pose[:, 0] / (np.pi / 6.)
     # azimuth from 0 to 360deg
-    pose[:, 1] = pose[:, 1] / (2. * np.pi)
+    pose[:, 1] = pose[:, 1] / np.pi - 1.
     # distance factor from 1.0 to sqrt(2.0)
-    pose[:, 2] = (pose[:, 2] - 1.) / (np.sqrt(2.) - 1.)
+    half = (np.sqrt(2.) - 1.) / 2.
+    pose[:, 2] = (pose[:, 2] - 1. - half) / half
+    pose = np.clip(pose, -1., 1.)
     return pose
 
 
@@ -327,8 +330,7 @@ def test(model, data, args):
 
 def denormalize_image(x):
     x = (x + 1.) / 2.
-    x = np.maximum(0., x)
-    x = np.minimum(1., x)
+    x = np.clip(x, 0., 1.)
     return x
 
 
