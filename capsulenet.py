@@ -28,15 +28,16 @@ from capsulelayers import CapsuleLayer, PrimaryCap, Mask
 from combine_mnist import sample_and_combine
 from buffering import buffered_gen_threaded as buf
 
+np.random.seed(0)
 K.set_image_data_format('channels_last')
 
 from keras.utils.vis_utils import plot_model
 
 
-def conv2d_transpose_bn(x, filters, kernel_size, strides=(1, 1), padding='valid', activation='relu'):
+def conv2d_transpose_bn(x, filters, kernel_size, strides=(1, 1), padding='valid', activation='relu', name=''):
     x = layers.Conv2DTranspose(filters, kernel_size, strides=strides, padding=padding, kernel_initializer='he_uniform')(x)
     x = layers.BatchNormalization()(x)
-    x = layers.Activation(activation)(x)
+    x = layers.Activation(activation, name=name)(x)
     return x
 
 
@@ -186,7 +187,7 @@ def CapsNet(input_shape, n_class, routings, capsule_size=16):
         y = identity_block(y, 3, 128, '6', '2')
         y = identity_block(y, 3, 128, '6', '3')
 
-        y = conv2d_transpose_bn(y, 4, 17, activation='tanh')
+        y = conv2d_transpose_bn(y, 4, 17, activation='tanh', name='out_recon')
 
         m = models.Model([conv, dcaps], y, name='decoder')
         # m.summary()
@@ -285,7 +286,7 @@ def train(model, args):
                                batch_size=args.batch_size, histogram_freq=int(args.debug))
     checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/weights-{epoch:02d}.h5', monitor='decoder_loss_1',
                                            save_best_only=False, save_weights_only=True, verbose=1)
-    lr_decay = callbacks.LearningRateScheduler(schedule=lambda epoch: args.lr * (args.lr_decay ** epoch))
+    lr_decay = callbacks.LearningRateScheduler(schedule=lambda epoch: args.lr * (args.lr_decay ** (epoch/50)))
 
     # compile the model
     model.compile(optimizer=optimizers.Adam(lr=args.lr),
@@ -300,7 +301,7 @@ def train(model, args):
                         initial_epoch=args.initial_epoch,
                         # validation_data=buf(data_generator(x_test, y_test, args.batch_size, args.overlap), 3),
                         # validation_steps=500,
-                        callbacks=[log, tb, checkpoint])#, lr_decay])
+                        callbacks=[log, tb, checkpoint ])
     # End: Training with data augmentation -----------------------------------------------------------------------#
 
     model.save_weights(args.save_dir + '/trained_model.h5')
@@ -334,30 +335,81 @@ def denormalize_image(x):
     return x
 
 
-def test_multi(model, args):
-    x1, x2, x, y1, y2, y, pose1, pose2 = sample_and_combine(None, None, overlap_factor=args.overlap)
-    x_recon1, x_recon2, pose1_p, pose2_p = model.predict_on_batch([x[np.newaxis], y1[np.newaxis], y2[np.newaxis]])
-    x1 = denormalize_image(x1)
-    x2 = denormalize_image(x2)
-    x = denormalize_image(x)
-    x_recon1 = denormalize_image(x_recon1)
-    x_recon2 = denormalize_image(x_recon2)
-    print(x1,x2,x,x_recon1,x_recon2)
-    print(preprocess_pose(pose1[np.newaxis]), preprocess_pose(pose2[np.newaxis]), pose1_p, pose2_p)
-    fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
-    ax[0][0].imshow(x1.squeeze())
-    ax[0][1].imshow(x2.squeeze())
-    ax[0][2].imshow(x.squeeze())
-    ax[1][0].imshow(x_recon1[0].squeeze())
-    ax[1][1].imshow(x_recon2[0].squeeze())
+def sample(model, args):
+    n_samples = 4
+    fig, ax = plt.subplots(nrows=n_samples, ncols=3, dpi=100, figsize=(40, 10*n_samples))
+    for i in range(n_samples):
+        x1, x2, x, y1, y2, y, pose1, pose2 = sample_and_combine(None, None, overlap_factor=args.overlap)
+        x_recon1, x_recon2, pose1_p, pose2_p = model.predict_on_batch([x[np.newaxis], y1[np.newaxis], y2[np.newaxis]])
+        x1 = denormalize_image(x1)
+        x2 = denormalize_image(x2)
+        x = denormalize_image(x)
+        x_recon1 = denormalize_image(x_recon1)
+        x_recon2 = denormalize_image(x_recon2)
+        print(x1,x2,x,x_recon1,x_recon2)
+        print(preprocess_pose(pose1[np.newaxis]), preprocess_pose(pose2[np.newaxis]), pose1_p, pose2_p)
+        #ax[i][0].imshow(x1.squeeze())
+        #ax[i][1].imshow(x2.squeeze())
+        ax[i][0].imshow(x.squeeze())
+        ax[i][1].imshow(x_recon1[0].squeeze())
+        ax[i][2].imshow(x_recon2[0].squeeze())
     plt.show()
-    # dssim = DSSIMObjective()
-    # model.compile(optimizer=optimizers.Adam(lr=args.lr),
-    #                    loss=[margin_loss, 'mse', dssim],
-    #                    loss_weights=[1., args.lam_recon, args.lam_recon],
-    #                    metrics={'capsnet': k_categorical_accuracy})
-    # e = model.evaluate_generator(buf(data_generator(x_test, y_test, 10, args.overlap), 3), steps=500)
-    # print(model.metrics_names, e)
+
+
+def get_iou(x_true, x_pred):
+    bs = len(x_true)
+    alpha_true = x_true[:,:,:,-1].reshape(bs, -1) > 0
+    alpha_pred = x_pred[:,:,:,-1].reshape(bs, -1) > 0
+    i = alpha_true * alpha_pred
+    i = i.sum(axis=-1)
+    u = alpha_true + alpha_pred
+    u = u.sum(axis=-1)
+    iou = i / u
+    return iou.mean()
+
+
+import tensorflow as tf
+
+def test_multi(model, args):
+    dssim = DSSIMObjective()
+    #model.compile(optimizer=optimizers.Adam(lr=args.lr),
+    #                   loss=['mse', 'mse', 'mse', 'mse'])
+    mse1 = 0
+    mse2 = 0
+    ssim1 = 0
+    ssim2 = 0
+    iou1 = 0
+    iou2 = 0
+    error1 = []
+    error2 = []
+    # x1 background, x2 foreground object
+    n = 10000
+    g = data_generator(None, None, args.batch_size, args.overlap)
+    for i in range(n):
+        inputs, ground_truth = next(g)
+        x1_pred, x2_pred, pose1_pred, pose2_pred = model.predict_on_batch(inputs)
+        x1_true, x2_true, pose1_true, pose2_true = ground_truth
+        mse1 += K.eval(mean_squared_error(tf.convert_to_tensor(x1_true, dtype=tf.float32), tf.convert_to_tensor(x1_pred, dtype=tf.float32))).mean()
+        mse2 += K.eval(mean_squared_error(tf.convert_to_tensor(x2_true, dtype=tf.float32), tf.convert_to_tensor(x2_pred, dtype=tf.float32))).mean()
+        ssim1 += K.eval(dssim(tf.convert_to_tensor(x1_true, dtype=tf.float32), tf.convert_to_tensor(x1_pred, dtype=tf.float32))).mean()
+        ssim2 += K.eval(dssim(tf.convert_to_tensor(x2_true, dtype=tf.float32), tf.convert_to_tensor(x2_pred, dtype=tf.float32))).mean()
+        iou1 += get_iou(x1_true, x1_pred)
+        iou2 += get_iou(x2_true, x2_pred)
+        e1 = np.absolute(pose1_true - pose1_pred).mean(axis=0) / 2. # percent
+        error1.append(e1)
+        e2 = np.absolute(pose2_true - pose2_pred).mean(axis=0) / 2. # percent
+        error2.append(e2)
+
+    mse1 /= n
+    mse2 /= n
+    ssim1 /= n
+    ssim2 /= n
+    iou1 /= n
+    iou2 /= n
+    error1 = np.stack(error1).mean(axis=0)
+    error2 = np.stack(error2).mean(axis=0)
+    print(mse1, mse2, ssim1, ssim2, iou1, iou2, error1, error2)
+    #print(model.metrics_names, e)
 
 
 def manipulate_latent(model, data, args):
@@ -396,6 +448,8 @@ if __name__ == "__main__":
     parser.add_argument('--initial_epoch', default=0, type=int)
     parser.add_argument('--batch_size', default=6, type=int)
     parser.add_argument('--overlap', default=0.8, type=float)
+    parser.add_argument('-s', '--sample', action='store_true',
+                        help="Test the trained model on testing dataset, show images")
     parser.add_argument('--lr', default=0.001, type=float,
                         help="Initial learning rate")
     parser.add_argument('--lr_decay', default=0.9, type=float,
@@ -431,6 +485,8 @@ if __name__ == "__main__":
         model.load_weights(args.weights)
     if not args.testing:
         train(model=model, args=args)
+    elif args.sample:
+        sample(model, args)
     else:  # as long as weights are given, will run testing
         if args.weights is None:
             print('No weights are provided. Will test using random initialized weights.')

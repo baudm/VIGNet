@@ -29,21 +29,21 @@ from keras.utils import to_categorical
 FILES = glob.glob(os.path.join('/home/darwin/Projects/datasets/shapenet/render/screenshots/modelsByCategory', '**/*.png'), recursive=True)
 TEST_FILES = glob.glob(os.path.join('/home/darwin/Projects/datasets/shapenet/render/screenshots/test', '**/*.png'), recursive=True)
 
-a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/car.train.npz')
+#a = np.load('/home/deeplearning2/Downloads/car.train.npz')
+#CAR_IMG = a['images']
+#CAR_LABELS = a['labels']
+
+#a = np.load('/home/deeplearning2/Downloads/motorcycle.train.npz')
+#MOTOR_IMG = a['images']
+#MOTOR_LABELS = a['labels']
+
+a = np.load('/home/deeplearning2/Downloads/car.test.npz')
 CAR_IMG = a['images']
 CAR_LABELS = a['labels']
-
-a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/motorcycle.train.npz')
+#
+a = np.load('/home/deeplearning2/Downloads/motorcycle.test.npz')
 MOTOR_IMG = a['images']
 MOTOR_LABELS = a['labels']
-
-# a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/car.test.npz')
-# CAR_IMG = a['images']
-# CAR_LABELS = a['labels']
-#
-# a = np.load('/home/darwin/Projects/datasets/shapenet/capsnet-dataset/motorcycle.test.npz')
-# MOTOR_IMG = a['images']
-# MOTOR_LABELS = a['labels']
 
 N = len(CAR_LABELS)
 
