@@ -368,12 +368,8 @@ def get_iou(x_true, x_pred):
     return iou.mean()
 
 
-import tensorflow as tf
-
 def test_multi(model, args):
     dssim = DSSIMObjective()
-    #model.compile(optimizer=optimizers.Adam(lr=args.lr),
-    #                   loss=['mse', 'mse', 'mse', 'mse'])
     mse1 = 0
     mse2 = 0
     ssim1 = 0
@@ -382,23 +378,32 @@ def test_multi(model, args):
     iou2 = 0
     error1 = []
     error2 = []
+
+    # Build the computational graph first
+    x_true = K.placeholder((None, 128, 128, 4), dtype='float32')
+    x_pred = K.placeholder((None, 128, 128, 4), dtype='float32')
+    mse = mean_squared_error(x_true, x_pred)
+    ssim = dssim(x_true, x_pred)
+    sess = K.get_session()
+
     # x1 background, x2 foreground object
-    n = 10000
+    n = 2500 # @ batch_size 40 = 100k samples
     g = data_generator(None, None, args.batch_size, args.overlap)
     for i in range(n):
         inputs, ground_truth = next(g)
         x1_pred, x2_pred, pose1_pred, pose2_pred = model.predict_on_batch(inputs)
         x1_true, x2_true, pose1_true, pose2_true = ground_truth
-        mse1 += K.eval(mean_squared_error(tf.convert_to_tensor(x1_true, dtype=tf.float32), tf.convert_to_tensor(x1_pred, dtype=tf.float32))).mean()
-        mse2 += K.eval(mean_squared_error(tf.convert_to_tensor(x2_true, dtype=tf.float32), tf.convert_to_tensor(x2_pred, dtype=tf.float32))).mean()
-        ssim1 += K.eval(dssim(tf.convert_to_tensor(x1_true, dtype=tf.float32), tf.convert_to_tensor(x1_pred, dtype=tf.float32))).mean()
-        ssim2 += K.eval(dssim(tf.convert_to_tensor(x2_true, dtype=tf.float32), tf.convert_to_tensor(x2_pred, dtype=tf.float32))).mean()
+        mse1 += sess.run(mse, feed_dict={x_true: x1_true, x_pred: x1_pred}).mean()
+        mse2 += sess.run(mse, feed_dict={x_true: x2_true, x_pred: x2_pred}).mean()
+        ssim1 += sess.run(ssim, feed_dict={x_true: x1_true, x_pred: x1_pred}).mean()
+        ssim2 += sess.run(ssim, feed_dict={x_true: x2_true, x_pred: x2_pred}).mean()
         iou1 += get_iou(x1_true, x1_pred)
         iou2 += get_iou(x2_true, x2_pred)
         e1 = np.absolute(pose1_true - pose1_pred).mean(axis=0) / 2. # percent
         error1.append(e1)
         e2 = np.absolute(pose2_true - pose2_pred).mean(axis=0) / 2. # percent
         error2.append(e2)
+        print(i)
 
     mse1 /= n
     mse2 /= n
