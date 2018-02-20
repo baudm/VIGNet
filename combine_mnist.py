@@ -136,7 +136,7 @@ def sample_and_combine(x_pool, y_pool, overlap_factor, FILES=TEST_FILES):
     # max_height = bb_h * 2 - min_y + (h - bb_h)
     # max_dim = max(max_width, max_height)
     #
-    combined = np.zeros((128, 128, 4), dtype=x1.dtype)
+    #combined = np.zeros((128, 128, 4), dtype=x1.dtype)
     #
     # x_offset1 = np.random.randint(0, max_width - total_width + 1)
     # y_offset1 = np.random.randint(0, max_height - total_height + 1)
@@ -158,8 +158,8 @@ def sample_and_combine(x_pool, y_pool, overlap_factor, FILES=TEST_FILES):
     final_off1 = offsets[idx]
     final_off2 = off2 if final_off1 is off1 else off1
 
-    draw(combined, x1, final_off1)
-    draw(combined, x2, final_off2)
+    #draw(combined, x1, final_off1)
+    #draw(combined, x2, final_off2)
 
     y_off1 = final_off1[1]
     if y_off1 == 0:
@@ -174,6 +174,9 @@ def sample_and_combine(x_pool, y_pool, overlap_factor, FILES=TEST_FILES):
     y = y1.copy()
     y[np.argmax(y2)] = 1
 
+    combined = x1.copy()
+    visible = x2 > 0
+    combined[visible] = x2[visible]
 
     # preprocess
     x1 = x1 / 127.5 - 1.
