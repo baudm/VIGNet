@@ -37,8 +37,9 @@ def sample_and_combine(car_data, motorcycle_data, rng):
 
     # Draw x2 on top of x1
     combined = x1.copy()
-    visible = x2 > 0
-    combined[visible] = x2[visible]
+    mask = x2[:, :, -1] > 0
+    mask = np.dstack([mask, mask, mask, mask])
+    combined[mask] = x2[mask]
 
     return x1, x2, combined, y1, y2, y, pose1, pose2
 
