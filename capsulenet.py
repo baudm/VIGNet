@@ -28,7 +28,6 @@ from capsulelayers import CapsuleLayer, PrimaryCap, Mask
 from combine_mnist import sample_and_combine
 from buffering import buffered_gen_threaded as buf
 
-np.random.seed(0)
 K.set_image_data_format('channels_last')
 
 from keras.utils.vis_utils import plot_model
