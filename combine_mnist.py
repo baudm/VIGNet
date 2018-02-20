@@ -67,7 +67,9 @@ def get_pose(f):
     return pose
 
 
-def sample_and_combine(x_pool, y_pool, overlap_factor, FILES=TEST_FILES):
+def sample_and_combine(x_pool, y_pool, overlap_factor, FILES=TEST_FILES, seed=0):
+    rng = np.random.RandomState(seed=seed)
+
     # n = len(FILES)
     # first = second = np.random.randint(n)
     # while np.array_equal(get_label(FILES[second]), get_label(FILES[first])):
@@ -85,18 +87,18 @@ def sample_and_combine(x_pool, y_pool, overlap_factor, FILES=TEST_FILES):
     #
     # print(FILES[first], FILES[second])
 
-    n = np.random.randint(N)
+    n = rng.randint(N)
     x1 = CAR_IMG[n]
     pose1 = CAR_LABELS[n]
     y1 = np.array([1, 0])
 
-    n = np.random.randint(N)
+    n = rng.randint(N)
     x2 = MOTOR_IMG[n]
     pose2 = MOTOR_LABELS[n]
     y2 = np.array([0, 1])
 
     # Swap 50% of the time
-    if np.random.choice(2):
+    if rng.choice(2):
         xt = x1
         yt = y1
         poset = pose1
@@ -123,7 +125,7 @@ def sample_and_combine(x_pool, y_pool, overlap_factor, FILES=TEST_FILES):
     # min_x = round(area_overlap / bb_h)
     # min_y = round(area_overlap / bb_w)
     # x_range = bb_w - min_x
-    # left_x = np.random.randint(-x_range, x_range + 1)
+    # left_x = rng.randint(-x_range, x_range + 1)
     # x_overlap = bb_w - abs(left_x)
     # y_overlap = round(area_overlap / x_overlap) if x_overlap else 0
     #
@@ -138,8 +140,8 @@ def sample_and_combine(x_pool, y_pool, overlap_factor, FILES=TEST_FILES):
     #
     #combined = np.zeros((128, 128, 4), dtype=x1.dtype)
     #
-    # x_offset1 = np.random.randint(0, max_width - total_width + 1)
-    # y_offset1 = np.random.randint(0, max_height - total_height + 1)
+    # x_offset1 = rng.randint(0, max_width - total_width + 1)
+    # y_offset1 = rng.randint(0, max_height - total_height + 1)
     #
     # x_offset2 = x_offset1 + bb_w - x_overlap# + (w - bb_w)/2
     # y_offset2 = y_offset1 + bb_h - y_overlap# + (h - bb_h)/2
@@ -154,7 +156,7 @@ def sample_and_combine(x_pool, y_pool, overlap_factor, FILES=TEST_FILES):
 
     offsets = [off1, off2]
 
-    idx = np.random.choice([0, 1])
+    idx = rng.choice([0, 1])
     final_off1 = offsets[idx]
     final_off2 = off2 if final_off1 is off1 else off1
 
