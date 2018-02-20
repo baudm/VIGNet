@@ -259,18 +259,39 @@ def preprocess_pose(pose):
     return pose
 
 
-def data_generator(x_data, y_data, batch_size, overlap, test=False):
+def preprocess_img(x):
+    x = x / 127.5 - 1.
+    return x
+
+
+def load_archive(prefix, name, test):
+    suffix = 'test' if test else 'train'
+    path = os.path.join(prefix, name + '.' + suffix + '.npz')
+    ar = np.load(path)
+    img = ar['images']
+    pose = ar['labels']
+    return img, pose
+
+
+def data_generator(batch_size, seed=0, test=False):
+    prefix = '/mnt/data/Projects/datasets/shapenet/3d-r2n2-dataset/'
+    car_data = load_archive(prefix, 'car', test)
+    motorcycle_data = load_archive(prefix, 'motorcycle', test)
+    rng = np.random.RandomState(seed)
     while True:
-        data = [sample_and_combine(x_data, y_data, overlap) for i in range(batch_size)]
+        data = [sample_and_combine(car_data, motorcycle_data, rng) for i in range(batch_size)]
         # Group
         data = zip(*data)
         # Stack
         data = list(map(np.stack, data))
         x1, x2, x, y1, y2, y, pose1, pose2 = data
+        # Preprocess
+        x1 = preprocess_img(x1)
+        x2 = preprocess_img(x2)
+        x = preprocess_img(x)
         pose1 = preprocess_pose(pose1)
         pose2 = preprocess_pose(pose2)
-        inputs = x if test else [x, y1, y2]
-        yield inputs, [x1, x2, pose1, pose2]
+        yield [x, y1, y2], [x1, x2, pose1, pose2]
 
 
 def train(model, args):
@@ -295,11 +316,11 @@ def train(model, args):
                   )
 
     # Training with data augmentation. If shift_fraction=0., also no augmentation.
-    model.fit_generator(generator=buf(data_generator(None, None, args.batch_size, args.overlap), 3),
+    model.fit_generator(generator=buf(data_generator(args.batch_size), 3),
                         steps_per_epoch=1000,
                         epochs=args.epochs,
                         initial_epoch=args.initial_epoch,
-                        # validation_data=buf(data_generator(x_test, y_test, args.batch_size, args.overlap), 3),
+                        # validation_data=buf(data_generator(args.batch_size), 3),
                         # validation_steps=500,
                         callbacks=[log, tb, checkpoint ])
     # End: Training with data augmentation -----------------------------------------------------------------------#
@@ -338,21 +359,18 @@ def denormalize_image(x):
 def sample(model, args):
     n_samples = 4
     fig, ax = plt.subplots(nrows=n_samples, ncols=3, dpi=100, figsize=(40, 10*n_samples))
+    g = data_generator(1, test=True)
     for i in range(n_samples):
-        x1, x2, x, y1, y2, y, pose1, pose2 = sample_and_combine(None, None, overlap_factor=args.overlap)
-        x_recon1, x_recon2, pose1_p, pose2_p = model.predict_on_batch([x[np.newaxis], y1[np.newaxis], y2[np.newaxis]])
-        x1 = denormalize_image(x1)
-        x2 = denormalize_image(x2)
-        x = denormalize_image(x)
-        x_recon1 = denormalize_image(x_recon1)
-        x_recon2 = denormalize_image(x_recon2)
-        print(x1,x2,x,x_recon1,x_recon2)
-        print(preprocess_pose(pose1[np.newaxis]), preprocess_pose(pose2[np.newaxis]), pose1_p, pose2_p)
-        #ax[i][0].imshow(x1.squeeze())
-        #ax[i][1].imshow(x2.squeeze())
+        inputs, ground_truth = next(g)
+        x = inputs[0]
+        x1_pred, x2_pred, pose1_pred, pose2_pred = model.predict_on_batch(inputs)
+        x1_true, x2_true, pose1_true, pose2_true = ground_truth
+        # Denormalize all images
+        x, x1_true, x2_true, x1_pred, x2_pred = map(denormalize_image, [x, x1_true, x2_true, x1_pred, x2_pred])
+        print(pose1_true, pose1_pred, pose2_true, pose2_pred)
         ax[i][0].imshow(x.squeeze())
-        ax[i][1].imshow(x_recon1[0].squeeze())
-        ax[i][2].imshow(x_recon2[0].squeeze())
+        ax[i][1].imshow(x1_pred[0].squeeze())
+        ax[i][2].imshow(x2_pred[0].squeeze())
     plt.show()
 
 
@@ -388,7 +406,7 @@ def test_multi(model, args):
 
     # x1 background, x2 foreground object
     n = 2500 # @ batch_size 40 = 100k samples
-    g = data_generator(None, None, args.batch_size, args.overlap)
+    g = data_generator(args.batch_size, test=True)
     for i in range(n):
         inputs, ground_truth = next(g)
         x1_pred, x2_pred, pose1_pred, pose2_pred = model.predict_on_batch(inputs)
