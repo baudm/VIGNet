@@ -27,7 +27,7 @@ from PIL import Image
 from capsulelayers import CapsuleLayer, PrimaryCap, Mask
 from combine_mnist import sample_and_combine
 from buffering import buffered_gen_threaded as buf
-
+import os
 K.set_image_data_format('channels_last')
 
 from keras.utils.vis_utils import plot_model
@@ -127,6 +127,9 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2, 2))
     return x
 
 
+import voxel_encoder
+
+
 def CapsNet(input_shape, n_class, routings, capsule_size=16):
     """
     A Capsule Network on MNIST.
@@ -220,12 +223,18 @@ def CapsNet(input_shape, n_class, routings, capsule_size=16):
 
     pose_estimator = make_pose_estimator()
 
+    voxelizer = voxel_encoder.create_3d_autoencoder()
+
+    x1_pred = decoder([conv1, masked_by_y1])
+    x2_pred = decoder([conv1, masked_by_y2])
+
     # Models for training and evaluation (prediction)
-    train_model = models.Model([x, y1, y2], [decoder([conv1, masked_by_y1]), decoder([conv1, masked_by_y2]), pose_estimator(masked_by_y1), pose_estimator(masked_by_y2)])
-    eval_model = models.Model([x, y1, y2], [decoder([conv1, masked_by_y1]), decoder([conv1, masked_by_y2]), pose_estimator(masked_by_y1), pose_estimator(masked_by_y2)])
+    train_model = models.Model([x, y1, y2], [x1_pred, x2_pred,
+                                             pose_estimator(masked_by_y1), pose_estimator(masked_by_y2),
+                                             voxelizer(x1_pred), voxelizer(x2_pred)])
     plot_model(train_model, show_shapes=True)
 
-    return train_model, eval_model
+    return train_model
 
 
 def margin_loss(y_true, y_pred):
@@ -498,7 +507,7 @@ if __name__ == "__main__":
         os.makedirs(args.save_dir)
 
     # define model
-    model, eval_model = CapsNet(input_shape=(128, 128, 4), n_class=2, routings=args.routings,
+    model = CapsNet(input_shape=(128, 128, 4), n_class=2, routings=args.routings,
                                                   capsule_size=16)
     model.summary()
 
@@ -513,4 +522,4 @@ if __name__ == "__main__":
         if args.weights is None:
             print('No weights are provided. Will test using random initialized weights.')
         #manipulate_latent(manipulate_model, (x_test, y_test), args)
-        test_multi(model=eval_model, args=args)
+        test_multi(model=model, args=args)
