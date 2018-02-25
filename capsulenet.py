@@ -33,10 +33,10 @@ K.set_image_data_format('channels_last')
 from keras.utils.vis_utils import plot_model
 
 
-def conv2d_transpose_bn(x, filters, kernel_size, strides=(1, 1), padding='valid', activation='relu', name=''):
-    x = layers.Conv2DTranspose(filters, kernel_size, strides=strides, padding=padding, kernel_initializer='he_uniform')(x)
+def conv2d_transpose_bn(x, filters, kernel_size, strides=(1, 1), padding='valid', activation='relu', name='conv2d_transpose'):
+    x = layers.Conv2DTranspose(filters, kernel_size, strides=strides, padding=padding, kernel_initializer='he_uniform', name=name)(x)
     x = layers.BatchNormalization()(x)
-    x = layers.Activation(activation, name=name)(x)
+    x = layers.Activation(activation)(x)
     return x
 
 
@@ -156,38 +156,38 @@ def CapsNet(input_shape, n_class, routings, capsule_size=16):
     def res_decoder():
         dcaps = layers.Input((n_class, capsule_size), name='masked_digitcaps')
         # pcaps = layers.Input((100352, 8))
-        conv = layers.Input((112, 112, 256))
+        conv = layers.Input((112, 112, 256), name='conv1')
 
         y = layers.Reshape((1, 1, n_class*capsule_size))(dcaps)
 
-        y = layers.Conv2DTranspose(32, 7)(y)
+        y = layers.Conv2DTranspose(32, 7, name='conv_pre')(y)
 
-        y = identity_block(y, 3, 32, '1', '1')
-        y = identity_block(y, 3, 32, '1', '2')
-        y = conv_block(y, 3, 64, '1', '3')
+        y = identity_block(y, 3, 32, stage='1', block='a')
+        y = identity_block(y, 3, 32, stage='1', block='b')
 
-        y = identity_block(y, 3, 64, '2', '1')
-        y = identity_block(y, 3, 64, '2', '2')
-        y = conv_block(y, 3, 128, '2', '4')
+        y = conv_block(y, 3, 64, stage='2', block='a')
+        y = identity_block(y, 3, 64, stage='2', block='b')
+        y = identity_block(y, 3, 64, stage='2', block='c')
 
-        y = identity_block(y, 3, 128, '3', '1')
-        y = identity_block(y, 3, 128, '3', '2')
-        y = conv_block(y, 3, 256, '3', '6')
+        y = conv_block(y, 3, 128, stage='3', block='a')
+        y = identity_block(y, 3, 128, stage='3', block='b')
+        y = identity_block(y, 3, 128, stage='3', block='c')
 
-        y = identity_block(y, 3, 256, '4', '1')
-        y = identity_block(y, 3, 256, '4', '2')
-        y = conv_block(y, 3, 256, '4', '4')
+        y = conv_block(y, 3, 256, stage='4', block='a')
+        y = identity_block(y, 3, 256, stage='4', block='b')
+        y = identity_block(y, 3, 256, stage='4', block='c')
+
+        y = conv_block(y, 3, 256, stage='5', block='a')
 
         y = layers.concatenate([y, conv])
 
-        y = identity_block(y, 3, 512, '5', '1')
-        y = identity_block(y, 3, 512, '5', '2')
-        y = identity_block(y, 3, 512, '5', '3')
+        y = identity_block(y, 3, 512, stage='6', block='a')
+        y = identity_block(y, 3, 512, stage='6', block='b')
+        y = identity_block(y, 3, 512, stage='6', block='c')
 
-        y = conv_block(y, 3, 128, '5', '4', strides=1)
-
-        y = identity_block(y, 3, 128, '6', '2')
-        y = identity_block(y, 3, 128, '6', '3')
+        y = conv_block(y, 3, 128, stage='7', block='a', strides=1)
+        y = identity_block(y, 3, 128, stage='7', block='b')
+        y = identity_block(y, 3, 128, stage='7', block='c')
 
         y = conv2d_transpose_bn(y, 4, 17, activation='tanh', name='out_recon')
 
@@ -203,8 +203,8 @@ def CapsNet(input_shape, n_class, routings, capsule_size=16):
     # Decoder network.
     y1 = layers.Input(shape=(n_class,), name='input_label_1')
     y2 = layers.Input(shape=(n_class,), name='input_label_2')
-    masked_by_y1 = Mask()([digitcaps, y1], name='masked_digitcap_1')  # The true label is used to mask the output of capsule layer. For training
-    masked_by_y2 = Mask()([digitcaps, y2], name='masked_digitcap_2')  # The true label is used to mask the output of capsule layer. For training
+    masked_by_y1 = Mask(name='masked_digitcap_1')([digitcaps, y1])  # The true label is used to mask the output of capsule layer. For training
+    masked_by_y2 = Mask(name='masked_digitcap_2')([digitcaps, y2])  # The true label is used to mask the output of capsule layer. For training
     # masked1 = Mask(1)(digitcaps) # Mask using the capsule with maximal length. For prediction
     # masked2 = Mask(2)(digitcaps)  # Mask using the capsule with maximal length. For prediction
 
@@ -214,9 +214,9 @@ def CapsNet(input_shape, n_class, routings, capsule_size=16):
     def make_pose_estimator():
         masked_dcaps = layers.Input((n_class, capsule_size), name='masked_digitcaps')
         pose = layers.Flatten()(masked_dcaps)
-        pose = layers.Dense(512, activation='relu', kernel_initializer='he_uniform')(pose)
-        pose = layers.Dense(1024, activation='relu', kernel_initializer='he_uniform')(pose)
-        pose = layers.Dense(3, activation='tanh', name='pose')(pose)
+        pose = layers.Dense(512, activation='relu', kernel_initializer='he_uniform', name='dense_1')(pose)
+        pose = layers.Dense(1024, activation='relu', kernel_initializer='he_uniform', name='dense_2')(pose)
+        pose = layers.Dense(3, activation='tanh', name='pose_output')(pose)
         m = models.Model(masked_dcaps, pose, name='pose')
         plot_model(m, show_shapes=True, to_file='pose-estimator.png')
         return m
