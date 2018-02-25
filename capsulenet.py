@@ -275,13 +275,14 @@ def preprocess_img(x):
 def load_archive(prefix, name, test):
     suffix = 'test' if test else 'train'
     path = os.path.join(prefix, name + '.' + suffix + '.npz')
+    print(path)
     ar = np.load(path)
     img = ar['images']
     pose = ar['labels']
     return img, pose
 
 
-def data_generator(batch_size, seed=0, test=False):
+def data_generator(batch_size, seed=0, test=False, preprocess=True):
     prefix = '/mnt/data/Projects/datasets/shapenet/3d-r2n2-dataset/'
     car_data = load_archive(prefix, 'car', test)
     motorcycle_data = load_archive(prefix, 'motorcycle', test)
@@ -294,11 +295,12 @@ def data_generator(batch_size, seed=0, test=False):
         data = list(map(np.stack, data))
         x1, x2, x, y1, y2, y, pose1, pose2 = data
         # Preprocess
-        x1 = preprocess_img(x1)
-        x2 = preprocess_img(x2)
-        x = preprocess_img(x)
-        pose1 = preprocess_pose(pose1)
-        pose2 = preprocess_pose(pose2)
+        if preprocess:
+            x1 = preprocess_img(x1)
+            x2 = preprocess_img(x2)
+            x = preprocess_img(x)
+            pose1 = preprocess_pose(pose1)
+            pose2 = preprocess_pose(pose2)
         yield [x, y1, y2], [x1, x2, pose1, pose2]
 
 
