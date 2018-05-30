@@ -19,7 +19,7 @@ def train(model, args):
     log = callbacks.CSVLogger(args.save_dir + '/log.csv')
     tb = callbacks.TensorBoard(log_dir=args.save_dir + '/tensorboard-logs',
                                batch_size=args.batch_size, histogram_freq=int(args.debug))
-    checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/weights-{epoch:02d}.h5', monitor='decoder_loss_1',
+    checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/weights-{epoch:02d}.h5', monitor='image_decoder_loss',
                                            save_best_only=False, save_weights_only=True, verbose=1)
     lr_decay = callbacks.LearningRateScheduler(schedule=lambda epoch: args.lr * (args.lr_decay ** (epoch/50)))
 

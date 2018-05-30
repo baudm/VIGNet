@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Keras implementation of CapsNet in Hinton's paper Dynamic Routing Between Capsules.
 The current version maybe only works for TensorFlow backend. Actually it will be straightforward to re-write to TF code.
@@ -114,6 +115,31 @@ def test_multi(model, args):
     #print(model.metrics_names, e)
 
 
+from vignet.voxel import voxel2obj
+from vignet.vox2mesh_func import vox2mesh
+
+import matplotlib.pyplot as plt
+
+def test_single(model):
+    g = data_generator(1, test=True)
+    inputs, ground_truth = next(g)
+    outs = model.predict_on_batch(inputs)
+    im1, im2 = outs[0], outs[1]
+    plt.subplot(211)
+    plt.imshow(denormalize_image(im1.squeeze()))
+    plt.subplot(212)
+    plt.imshow(denormalize_image(im2.squeeze()))
+    plt.show()
+    voxel_prediction1 = outs[-1].squeeze()
+    voxel_prediction2 = outs[-2].squeeze()
+    # Save the prediction to an OBJ file (mesh file)
+    vox2mesh('prediction_mesh1.obj', voxel_prediction1[:, :, :, 1] > 0.4)
+    voxel2obj('prediction_vox1.obj', voxel_prediction1[:, :, :, 1] > 0.4)
+
+    vox2mesh('prediction_mesh2.obj', voxel_prediction2[:, :, :, 1] > 0.4)
+    voxel2obj('prediction_vox2.obj', voxel_prediction2[:, :, :, 1] > 0.4)
+
+
 def main():
     import os
     import argparse
@@ -147,10 +173,11 @@ def main():
     test_model.summary()
 
     train_model.load_weights('pretrained/weights-905.h5')
-    voxelizer.load_weights('pretrained/voxelizer-weights.h5')
+    voxelizer.load_weights('pretrained/3DR2N2.weights.simple.lstm.h5')
 
 
-    test_multi(model=train_model, args=args)
+    #test_multi(model=train_model, args=args)
+    test_single(test_model)
 
 
 if __name__ == '__main__':

@@ -6,7 +6,7 @@ from PIL import Image
 from keras import backend as K
 from keras.models import Model
 from keras.layers import Input, Conv2D, MaxPooling2D, UpSampling3D, LeakyReLU, Conv3D, \
-    Activation, Flatten, Dense, Reshape, BatchNormalization
+    Activation, Flatten, Dense, Reshape, BatchNormalization, Lambda
 from keras.optimizers import Adam
 
 from vignet.rnn3D import LSTM3D
@@ -34,7 +34,10 @@ def create_3d_autoencoder(vox_size=32):
     input_shape = (128, 128, 4)
     inp = Input(shape=input_shape, name='input_image')
 
-    x = Conv2D(96, (7, 7), padding='same')(inp)
+    # Denormalize image from [-1, 1] to [0, 255]
+    x = Lambda(lambda i: (i + 1.) * 127.5)(inp)
+
+    x = Conv2D(96, (7, 7), padding='same')(x)
     x = BatchNormalization()(x)
     x = LeakyReLU(0.01)(x)
     x = MaxPooling2D((2, 2))(x)
