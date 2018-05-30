@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 """
-Some key layers used for constructing a Capsule Network. These layers can used to construct CapsNet on other dataset, 
+Some key layers used for constructing a Capsule Network. These layers can used to construct CapsNet on other dataset,
 not just on MNIST.
 *NOTE*: some functions can be implemented in multiple ways, I keep all of them. You can try them for yourself just by
 uncommenting them and commenting their counterparts.
@@ -7,8 +8,9 @@ uncommenting them and commenting their counterparts.
 Author: Xifeng Guo, E-mail: `guoxifeng1990@163.com`, Github: `https://github.com/XifengGuo/CapsNet-Keras`
 """
 
-import keras.backend as K
 import tensorflow as tf
+
+from keras import backend as K
 from keras import initializers, layers
 
 
@@ -22,23 +24,104 @@ def k_categorical_accuracy(y_true, y_pred, k=2):
     return K.all(K.cast(K.equal(y_true, y_pred), K.floatx()), -1)
 
 
-class Length(layers.Layer):
-    """
-    Compute the length of vectors. This is used to compute a Tensor that has the same shape with y_true in margin_loss.
-    Using this layer as model's output can directly predict labels by using `y_pred = np.argmax(model.predict(x), 1)`
-    inputs: shape=[None, num_vectors, dim_vector]
-    output: shape=[None, num_vectors]
-    """
-    def call(self, inputs, **kwargs):
-        return K.sqrt(K.sum(K.square(inputs), -1))
 
-    def compute_output_shape(self, input_shape):
-        return input_shape[:-1]
+def identity_block(input_tensor, kernel_size, filters, stage, block):
+    """The identity block is the block that has no conv layer at shortcut.
+
+    # Arguments
+        input_tensor: input tensor
+        kernel_size: default 3, the kernel size of middle conv layer at main path
+        filters: list of integers, the filters of 3 conv layer at main path
+        stage: integer, current stage label, used for generating layer names
+        block: 'a','b'..., current block label, used for generating layer names
+
+    # Returns
+        Output tensor for the block.
+    """
+    if K.image_data_format() == 'channels_last':
+        bn_axis = 3
+    else:
+        bn_axis = 1
+    conv_name_base = 'res' + str(stage) + block + '_branch'
+    bn_name_base = 'bn' + str(stage) + block + '_branch'
+
+    filters_bottleneck = filters // 4
+
+    x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(input_tensor)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2DTranspose(filters_bottleneck, (1, 1), padding='same', name=conv_name_base + '2a', kernel_initializer='he_uniform')(x)
+
+    x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2DTranspose(filters_bottleneck, kernel_size, kernel_initializer='he_uniform',
+               padding='same', name=conv_name_base + '2b')(x)
+
+    x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2DTranspose(filters, (1, 1), padding='same', name=conv_name_base + '2c', kernel_initializer='he_uniform')(x)
+
+    x = layers.add([x, input_tensor])
+    return x
+
+
+def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2, 2)):
+    """A block that has a conv layer at shortcut.
+
+    # Arguments
+        input_tensor: input tensor
+        kernel_size: default 3, the kernel size of middle conv layer at main path
+        filters: list of integers, the filters of 3 conv layer at main path
+        stage: integer, current stage label, used for generating layer names
+        block: 'a','b'..., current block label, used for generating layer names
+
+    # Returns
+        Output tensor for the block.
+
+    Note that from stage 3, the first conv layer at main path is with strides=(2,2)
+    And the shortcut should have strides=(2,2) as well
+    """
+    if K.image_data_format() == 'channels_last':
+        bn_axis = 3
+    else:
+        bn_axis = 1
+    conv_name_base = 'res' + str(stage) + block + '_branch'
+    bn_name_base = 'bn' + str(stage) + block + '_branch'
+
+    filters_bottleneck = filters // 4
+
+    x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(input_tensor)
+    x = layers.Activation('relu')(x)
+
+    shortcut = layers.Conv2DTranspose(filters, (1, 1), strides=strides, padding='same', kernel_initializer='he_uniform',
+                      name=conv_name_base + '1')(x)
+
+    x = layers.Conv2DTranspose(filters_bottleneck, (1, 1), strides=strides, padding='same', kernel_initializer='he_uniform',
+               name=conv_name_base + '2a')(x)
+
+    x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2DTranspose(filters_bottleneck, kernel_size, padding='same', kernel_initializer='he_uniform',
+               name=conv_name_base + '2b')(x)
+
+    x = layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2DTranspose(filters, (1, 1), padding='same', name=conv_name_base + '2c', kernel_initializer='he_uniform')(x)
+
+    x = layers.add([x, shortcut])
+
+    return x
+
+
+def conv2d_transpose_bn(x, filters, kernel_size, strides=(1, 1), padding='valid', activation='relu', name='conv2d_transpose'):
+    x = layers.Conv2DTranspose(filters, kernel_size, strides=strides, padding=padding, kernel_initializer='he_uniform', name=name)(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation(activation)(x)
+    return x
 
 
 class Mask(layers.Layer):
     """
-    Mask a Tensor with shape=[None, num_capsule, dim_vector] either by the capsule with max length or by an additional 
+    Mask a Tensor with shape=[None, num_capsule, dim_vector] either by the capsule with max length or by an additional
     input mask. Except the max-length capsule (or specified capsule), all vectors are masked to zeros. Then flatten the
     masked Tensor.
     For example:
@@ -89,29 +172,18 @@ class Mask(layers.Layer):
         return dict(list(base_config.items()) + list(config.items()))
 
 
-def squash(vectors, axis=-1):
-    """
-    The non-linear activation used in Capsule. It drives the length of a large vector to near 1 and small vector to 0
-    :param vectors: some vectors to be squashed, N-dim tensor
-    :param axis: the axis to squash
-    :return: a Tensor with same shape as input vectors
-    """
-    s_squared_norm = K.sum(K.square(vectors), axis, keepdims=True)
-    scale = s_squared_norm / (1 + s_squared_norm) / K.sqrt(s_squared_norm + K.epsilon())
-    return scale * vectors
-
-
 class CapsuleLayer(layers.Layer):
     """
-    The capsule layer. It is similar to Dense layer. Dense layer has `in_num` inputs, each is a scalar, the output of the 
+    The capsule layer. It is similar to Dense layer. Dense layer has `in_num` inputs, each is a scalar, the output of the
     neuron from the former layer, and it has `out_num` output neurons. CapsuleLayer just expand the output of the neuron
     from scalar to vector. So its input shape = [None, input_num_capsule, input_dim_capsule] and output shape = \
     [None, num_capsule, dim_capsule]. For Dense Layer, input_dim_capsule = dim_capsule = 1.
-    
+
     :param num_capsule: number of capsules in this layer
     :param dim_capsule: dimension of the output vectors of the capsules in this layer
     :param routings: number of iterations for the routing algorithm
     """
+
     def __init__(self, num_capsule, dim_capsule, routings=3,
                  kernel_initializer='glorot_uniform',
                  **kwargs):
@@ -183,6 +255,18 @@ class CapsuleLayer(layers.Layer):
         return tuple([None, self.num_capsule, self.dim_capsule])
 
 
+def squash(vectors, axis=-1):
+    """
+    The non-linear activation used in Capsule. It drives the length of a large vector to near 1 and small vector to 0
+    :param vectors: some vectors to be squashed, N-dim tensor
+    :param axis: the axis to squash
+    :return: a Tensor with same shape as input vectors
+    """
+    s_squared_norm = K.sum(K.square(vectors), axis, keepdims=True)
+    scale = s_squared_norm / (1 + s_squared_norm) / K.sqrt(s_squared_norm + K.epsilon())
+    return scale * vectors
+
+
 def PrimaryCap(inputs, dim_capsule, n_channels, kernel_size, strides, padding):
     """
     Apply Conv2D `n_channels` times and concatenate all capsules
@@ -191,20 +275,7 @@ def PrimaryCap(inputs, dim_capsule, n_channels, kernel_size, strides, padding):
     :param n_channels: the number of types of capsules
     :return: output tensor, shape=[None, num_capsule, dim_capsule]
     """
-    output = layers.Conv2D(filters=dim_capsule*n_channels, kernel_size=kernel_size, strides=strides, padding=padding,
+    output = layers.Conv2D(filters=dim_capsule * n_channels, kernel_size=kernel_size, strides=strides, padding=padding,
                            name='primarycap_conv2d')(inputs)
     outputs = layers.Reshape(target_shape=[-1, dim_capsule], name='primarycap_reshape')(output)
     return layers.Lambda(squash, name='primarycap_squash')(outputs)
-
-
-"""
-# The following is another way to implement primary capsule layer. This is much slower.
-# Apply Conv2D `n_channels` times and concatenate all capsules
-def PrimaryCap(inputs, dim_capsule, n_channels, kernel_size, strides, padding):
-    outputs = []
-    for _ in range(n_channels):
-        output = layers.Conv2D(filters=dim_capsule, kernel_size=kernel_size, strides=strides, padding=padding)(inputs)
-        outputs.append(layers.Reshape([output.get_shape().as_list()[1] ** 2, dim_capsule])(output))
-    outputs = layers.Concatenate(axis=1)(outputs)
-    return layers.Lambda(squash)(outputs)
-"""

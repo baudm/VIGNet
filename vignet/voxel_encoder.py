@@ -9,10 +9,9 @@ from keras.layers import Input, Conv2D, MaxPooling2D, UpSampling3D, LeakyReLU, C
     Activation, Flatten, Dense, Reshape, BatchNormalization
 from keras.optimizers import Adam
 
-from rnn3D import LSTM3D
-
-from voxel import voxel2obj
-from vox2mesh_func import vox2mesh
+from vignet.rnn3D import LSTM3D
+from vignet.voxel import voxel2obj
+from vignet.vox2mesh_func import vox2mesh
 
 
 # Loss
