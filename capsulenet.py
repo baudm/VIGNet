@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from utils import combine_images
 from PIL import Image
 from capsulelayers import CapsuleLayer, PrimaryCap, Mask
-from combine_mnist import sample_and_combine
+from combine import sample_and_combine
 from buffering import buffered_gen_threaded as buf
 import os
 K.set_image_data_format('channels_last')
