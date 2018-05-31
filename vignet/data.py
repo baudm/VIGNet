@@ -34,7 +34,8 @@ def load_archive(prefix, name, test):
 
 
 def data_generator(batch_size, seed=0, test=False, preprocess=True):
-    prefix = '/mnt/data/Projects/datasets/shapenet/3d-r2n2-dataset/'
+    proj_root = os.path.split(os.path.dirname(__file__))[0]
+    prefix = os.path.join(proj_root, 'dataset')
     car_data = load_archive(prefix, 'car', test)
     motorcycle_data = load_archive(prefix, 'motorcycle', test)
     rng = np.random.RandomState(seed)
